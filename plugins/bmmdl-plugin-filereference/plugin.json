@@ -1,0 +1,10 @@
+{
+  "name": "BMMDL.Plugin.FileReference",
+  "version": "1.0.0",
+  "description": "FileReference type expansion to 8 metadata columns",
+  "author": "BMMDL Team",
+  "entryAssembly": "BMMDL.Plugin.FileReference.dll",
+  "dependencies": [],
+  "bmmdlModules": [],
+  "autoLoad": true
+}

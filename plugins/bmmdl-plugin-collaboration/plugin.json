@@ -1,0 +1,10 @@
+{
+  "name": "BMMDL.Plugin.Collaboration",
+  "version": "1.0.0",
+  "description": "Comments and change request workflows on entities",
+  "author": "BMMDL Team",
+  "entryAssembly": "BMMDL.Plugin.Collaboration.dll",
+  "dependencies": [],
+  "bmmdlModules": [],
+  "autoLoad": true
+}

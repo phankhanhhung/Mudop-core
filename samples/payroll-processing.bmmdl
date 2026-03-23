@@ -1,0 +1,212 @@
+// ============================================================
+// BMMDL Sample: Payroll - Processing Entities
+// Domain: Payroll - Payroll Run and Payslip
+// ============================================================
+
+namespace Payroll;
+
+// ============================================================
+// PAYROLL RUN
+// ============================================================
+
+@Core.Description: 'Individual payroll run for an employee'
+entity PayrollRun : Auditable {
+    key ID: UUID;
+    runNumber: String(30);
+    
+    // Period
+    periodStartDate: Date;
+    periodEndDate: Date;
+    payDate: Date;
+    
+    // Work days
+    workingDays: Decimal(5, 2);
+    daysWorked: Decimal(5, 2);
+    paidLeaveDays: Decimal(5, 2);
+    unpaidLeaveDays: Decimal(5, 2);
+    
+    // Hours
+    regularHours: Hours;
+    overtimeHours: Hours;
+    holidayHours: Hours;
+    
+    // Gross calculations
+    basicSalary: Decimal(15, 2);
+    dailyRate: Decimal(15, 2);
+    hourlyRate: Decimal(15, 2);
+    
+    // Totals
+    totalEarnings: Decimal(15, 2) default 0;
+    totalDeductions: Decimal(15, 2) default 0;
+    totalTax: Decimal(15, 2) default 0;
+    netPay: Decimal(15, 2) default 0;
+    
+    // YTD (Year to Date)
+    ytdGross: Decimal(15, 2) default 0;
+    ytdTax: Decimal(15, 2) default 0;
+    ytdNet: Decimal(15, 2) default 0;
+    
+    // Status
+    status: PayrollStatus default #Draft;
+    
+    // Payment
+    paymentReference: String(50);
+    paymentDate: DateTime;
+    
+    // Relations
+    period: association [1] to PayrollPeriod;
+    employee: association [1] to HR.Employee;
+    employeePayroll: association [1] to EmployeePayroll;
+    
+    // Line items
+    earnings: composition [*] of PayrollEarning;
+    deductions: composition [*] of PayrollDeduction;
+    taxes: composition [*] of PayrollTax;
+}
+
+@Core.Description: 'Payroll earning line item'
+entity PayrollEarning {
+    key ID: UUID;
+    description: String(200);
+    
+    // Calculation
+    quantity: Decimal(10, 2) default 1;
+    rate: Decimal(15, 4);
+    amount: Decimal(15, 2);
+    
+    // Flags
+    isTaxable: Boolean default true;
+    isOvertime: Boolean default false;
+    
+    payrollRun: association [1] to PayrollRun;
+    earningConfig: association [0,1] to EarningConfig;
+}
+
+@Core.Description: 'Payroll deduction line item'
+entity PayrollDeduction {
+    key ID: UUID;
+    description: String(200);
+    
+    // Calculation
+    baseAmount: Decimal(15, 2);
+    percentage: Percentage;
+    amount: Decimal(15, 2);
+    
+    // Flags
+    isPreTax: Boolean default false;
+    isEmployerContribution: Boolean default false;
+    employerAmount: Decimal(15, 2) default 0;
+    
+    payrollRun: association [1] to PayrollRun;
+    deductionConfig: association [0,1] to DeductionConfig;
+}
+
+@Core.Description: 'Payroll tax calculation'
+entity PayrollTax {
+    key ID: UUID;
+    taxType: String(50);
+    description: String(200);
+    
+    // Calculation
+    taxableIncome: Decimal(15, 2);
+    taxRate: Percentage;
+    taxAmount: Decimal(15, 2);
+    
+    // Employer portion (for some taxes)
+    employerAmount: Decimal(15, 2) default 0;
+    
+    payrollRun: association [1] to PayrollRun;
+    taxBracket: association [0,1] to TaxBracket;
+}
+
+// ============================================================
+// OVERTIME AND BONUS
+// ============================================================
+
+@Core.Description: 'Overtime request'
+entity OvertimeRequest : Auditable {
+    key ID: UUID;
+    requestNumber: String(20);
+    
+    // Details
+    overtimeDate: Date;
+    startTime: Time;
+    endTime: Time;
+    hours: Hours;
+    reason: String(500);
+    
+    // Rate
+    overtimeType: String(20) default 'Regular'; // Regular, Weekend, Holiday
+    multiplier: Decimal(3, 2) default 1.5;
+    
+    // Status
+    status: String(20) default 'Pending'; // Pending, Approved, Rejected, Completed
+    approvedBy: UUID;
+    approvedAt: DateTime;
+    
+    // Actual
+    actualHours: Hours;
+    isProcessed: Boolean default false;
+    processedInPeriod: association [0,1] to PayrollPeriod;
+    
+    employee: association [1] to HR.Employee;
+}
+
+@Core.Description: 'Bonus payout'
+entity BonusPayout : Auditable, TenantAware {
+    key ID: UUID;
+    payoutCode: String(20);
+    name: String(100);
+    description: String(500);
+    
+    // Type
+    bonusType: String(50); // Annual, Performance, Spot, Referral, SignOn
+    
+    // Calculation
+    calculationMethod: String(20) default 'Fixed'; // Fixed, PercentOfSalary, Formula
+    defaultAmount: Decimal(15, 2);
+    defaultPercentage: Percentage;
+    
+    // Period
+    effectiveDate: Date;
+    paymentDate: Date;
+    
+    // Status
+    status: PayrollStatus default #Draft;
+    
+    // Totals
+    totalAmount: Decimal(15, 2) default 0;
+    employeeCount: Integer default 0;
+    
+    // Individual bonuses
+    employeeBonuses: composition [*] of EmployeeBonus;
+}
+
+@Core.Description: 'Individual employee bonus'
+entity EmployeeBonus {
+    key ID: UUID;
+    amount: Decimal(15, 2);
+    percentage: Percentage;
+    reason: String(500);
+    
+    // Calculation base
+    baseSalary: Decimal(15, 2);
+    calculatedAmount: Decimal(15, 2);
+    adjustedAmount: Decimal(15, 2);
+    finalAmount: Decimal(15, 2);
+    
+    // Status
+    status: String(20) default 'Pending'; // Pending, Approved, Paid
+    approvedBy: UUID;
+    approvedAt: DateTime;
+    
+    // Processing
+    isProcessed: Boolean default false;
+    processedInPeriod: association [0,1] to PayrollPeriod;
+    
+    bonusPayout: association [1] to BonusPayout;
+    employee: association [1] to HR.Employee;
+}
+
+
+

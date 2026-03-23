@@ -1,0 +1,264 @@
+﻿// ============================================================
+// Module: SCM (Supply Chain Management)
+// Description: Sales, Purchasing, Inventory, Manufacturing
+// Install Order: 5
+// ============================================================
+
+module SCM version '1.0.0' {
+    author: 'ERP Team';
+    description: 'Supply Chain Management module';
+    depends on MasterData version '>=1.0.0';
+    imports MasterData, Core;
+    publishes SCM;
+
+    namespace SCM {
+        // ============================================================
+        // SALES ORDER
+        // ============================================================
+
+        @Description: 'Sales Order'
+        entity SalesOrder : Auditable, TenantAware, CompanyAware {
+            key ID: UUID;
+
+            @Sequence.Name: 'SalesOrderSeq'
+            @Sequence.Pattern: 'SO-{company}-{year}{month}-{seq:5}'
+            @Sequence.ResetOn: #Monthly
+            orderNumber: Code;
+
+            orderDate: Date default $today;
+            requiredDate: Date;
+
+            customer: association [1] to Customer;
+            salesRep: association [0,1] to Employee;
+
+            shippingAddress: Address;
+            billingAddress: Address;
+
+            // Amounts
+            subtotal: Amount default 0;
+            discountPercent: Percentage default 0;
+            discountAmount: Amount default 0;
+            taxPercent: Percentage default 0;
+            taxAmount: Amount default 0;
+            shippingCost: Amount default 0;
+            totalAmount: Amount default 0;
+
+            status: SalesOrderStatus default #Draft;
+
+            items: composition [*] of SalesOrderItem;
+        }
+
+        entity SalesOrderItem : TenantAware {
+            key ID: UUID;
+
+            lineNumber: Integer;
+            product: association [1] to Product;
+
+            quantity: Quantity;
+            unitPrice: Amount;
+            discountPercent: Percentage default 0;
+
+            @Computed
+            lineTotal: Amount;
+
+            warehouse: association [0,1] to Warehouse;
+
+            quantityShipped: Quantity default 0;
+            quantityInvoiced: Quantity default 0;
+        }
+
+        enum SalesOrderStatus {
+            Draft;
+            Confirmed;
+            Processing;
+            PartiallyShipped;
+            Shipped;
+            Completed;
+            Cancelled;
+        }
+
+        // ============================================================
+        // PURCHASE ORDER
+        // ============================================================
+
+        @Description: 'Purchase Order'
+        entity PurchaseOrder : Auditable, TenantAware, CompanyAware {
+            key ID: UUID;
+
+            @Sequence.Name: 'PurchaseOrderSeq'
+            @Sequence.Pattern: 'PO-{company}-{year}{month}-{seq:5}'
+            orderNumber: Code;
+
+            orderDate: Date default $today;
+            expectedDate: Date;
+
+            vendor: association [1] to Vendor;
+            buyer: association [0,1] to Employee;
+
+            // Amounts
+            subtotal: Amount default 0;
+            taxAmount: Amount default 0;
+            totalAmount: Amount default 0;
+
+            status: PurchaseOrderStatus default #Draft;
+
+            items: composition [*] of PurchaseOrderItem;
+        }
+
+        entity PurchaseOrderItem : TenantAware {
+            key ID: UUID;
+
+            lineNumber: Integer;
+            product: association [1] to Product;
+
+            quantity: Quantity;
+            unitCost: Amount;
+
+            @Computed
+            lineTotal: Amount;
+
+            warehouse: association [0,1] to Warehouse;
+
+            quantityReceived: Quantity default 0;
+        }
+
+        enum PurchaseOrderStatus {
+            Draft;
+            Submitted;
+            Approved;
+            Ordered;
+            PartiallyReceived;
+            Received;
+            Completed;
+            Cancelled;
+        }
+
+        // ============================================================
+        // INVENTORY
+        // ============================================================
+
+        @Description: 'Inventory stock level'
+        entity InventoryLevel : Auditable, TenantAware {
+            key ID: UUID;
+
+            product: association [1] to Product;
+            warehouse: association [1] to Warehouse;
+            location: association [0,1] to StorageLocation;
+
+            quantityOnHand: Quantity default 0;
+            quantityReserved: Quantity default 0;
+            quantityOnOrder: Quantity default 0;
+
+            @Computed
+            quantityAvailable: Quantity;
+
+            lastCountDate: Date;
+            lastMovementDate: Date;
+
+            unique index idx_product_warehouse on (product, warehouse);
+        }
+
+        @Description: 'Inventory movement transaction'
+        entity InventoryTransaction : Auditable, TenantAware {
+            key ID: UUID;
+
+            @Sequence.Name: 'InvTxnSeq'
+            @Sequence.Pattern: 'ITX-{year}{month}{day}-{seq:6}'
+            transactionNumber: Code;
+
+            transactionDate: Timestamp default $now;
+            transactionType: InventoryTransactionType;
+
+            product: association [1] to Product;
+            warehouse: association [1] to Warehouse;
+            fromLocation: association [0,1] to StorageLocation;
+            toLocation: association [0,1] to StorageLocation;
+
+            quantity: Quantity;
+            unitCost: Amount;
+
+            referenceType: String(50);
+            referenceId: UUID;
+            referenceNumber: String(50);
+
+            notes: Description;
+        }
+
+        enum InventoryTransactionType {
+            Receipt;
+            Issue;
+            Transfer;
+            Adjustment;
+            Return;
+            Scrap;
+            Production;
+            Consumption;
+        }
+
+        // ============================================================
+        // MANUFACTURING
+        // ============================================================
+
+        @Description: 'Bill of Materials'
+        entity BillOfMaterial : Auditable, TenantAware, Versioned {
+            key ID: UUID;
+
+            product: association [1] to Product;
+
+            name: Name;
+            quantity: Quantity default 1;
+            unitOfMeasure: String(10);
+
+            status: Status default #Active;
+
+            components: composition [*] of BOMComponent;
+        }
+
+        entity BOMComponent : TenantAware {
+            key ID: UUID;
+
+            lineNumber: Integer;
+            product: association [1] to Product;
+
+            quantity: Quantity;
+            unitOfMeasure: String(10);
+            scrapPercent: Percentage default 0;
+
+            isOptional: Boolean default false;
+        }
+
+        @Description: 'Production Order'
+        entity ProductionOrder : Auditable, TenantAware, CompanyAware {
+            key ID: UUID;
+
+            @Sequence.Name: 'ProductionOrderSeq'
+            @Sequence.Pattern: 'MO-{year}{month}-{seq:5}'
+            orderNumber: Code;
+
+            product: association [1] to Product;
+            bom: association [1] to BillOfMaterial;
+            warehouse: association [1] to Warehouse;
+
+            plannedQuantity: Quantity;
+            completedQuantity: Quantity default 0;
+            scrappedQuantity: Quantity default 0;
+
+            plannedStartDate: Date;
+            plannedEndDate: Date;
+            actualStartDate: Date;
+            actualEndDate: Date;
+
+            status: ProductionStatus default #Planned;
+        }
+
+        enum ProductionStatus {
+            Planned;
+            Released;
+            InProgress;
+            Completed;
+            Closed;
+            Cancelled;
+        }
+
+    }
+}

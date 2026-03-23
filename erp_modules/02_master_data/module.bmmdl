@@ -1,0 +1,271 @@
+﻿// ============================================================
+// Module: Master Data
+// Description: Core business entities (Customer, Product, Employee)
+// Install Order: 2
+// ============================================================
+
+module MasterData version '1.0.0' {
+    author: 'ERP Team';
+    description: 'Core master data entities for ERP';
+    depends on Core version '>=1.0.0';
+    imports Core;
+    publishes MasterData;
+
+    namespace MasterData {
+        // ============================================================
+        // EMPLOYEE (Base entity for HR)
+        // ============================================================
+
+        @Description: 'Employee master data'
+        entity Employee : Auditable, SoftDeletable, TenantAware {
+            key ID: UUID;
+
+            @Sequence.Name: 'EmployeeCodeSeq'
+            @Sequence.Pattern: 'EMP-{seq:6}'
+            employeeCode: Code;
+
+            @Mandatory: true
+            firstName: Name;
+
+            @Mandatory: true
+            lastName: Name;
+
+            fullName: Name;
+
+            email: Email;
+            phone: Phone;
+
+            gender: Gender;
+            dateOfBirth: Date;
+            nationalId: String(20);
+
+            // Employment info
+            hireDate: Date;
+            terminationDate: Date;
+            employmentStatus: EmploymentStatus default #Active;
+            employmentType: EmploymentType default #FullTime;
+
+            // Organizational
+            department: association [0,1] to Department;
+            position: association [0,1] to Position;
+            manager: association [0,1] to Employee;
+
+            // Contact info
+            homeAddress: Address;
+            emergencyContact: Contact;
+
+            isActive: Boolean default true;
+        }
+
+        entity Department : Auditable, TenantAware {
+            key ID: UUID;
+
+            code: ShortCode;
+            name: Name;
+            parentDepartment: association [0,1] to Department;
+            manager: association [0,1] to Employee;
+            costCenter: String(20);
+            isActive: Boolean default true;
+        }
+
+        entity Position : Auditable, TenantAware {
+            key ID: UUID;
+
+            code: ShortCode;
+            name: Name;
+            department: association [0,1] to Department;
+            level: Integer;
+            minSalary: Amount;
+            maxSalary: Amount;
+            isActive: Boolean default true;
+        }
+
+        enum EmploymentStatus {
+            Active;
+            OnLeave;
+            Suspended;
+            Terminated;
+            Retired;
+        }
+
+        enum EmploymentType {
+            FullTime;
+            PartTime;
+            Contract;
+            Intern;
+            Consultant;
+        }
+
+        // ============================================================
+        // CUSTOMER
+        // ============================================================
+
+        @Description: 'Customer master data'
+        entity Customer : Auditable, SoftDeletable, TenantAware, CompanyAware {
+            key ID: UUID;
+
+            @Sequence.Name: 'CustomerCodeSeq'
+            @Sequence.Pattern: 'CUS-{company}-{seq:6}'
+            customerCode: Code;
+
+            @Mandatory: true
+            name: Name;
+
+            email: Email;
+            phone: Phone;
+
+            customerType: CustomerType default #Regular;
+            creditLimit: Amount default 0;
+
+            status: Status default #Active;
+
+            // Addresses
+            addresses: composition [*] of CustomerAddress;
+
+            // Sales rep
+            salesRep: association [0,1] to Employee;
+        }
+
+        entity CustomerAddress: TenantAware {
+            key ID: UUID;
+
+            addressType: AddressType;
+            street: String(500);
+            city: String(100);
+            state: String(100);
+            country: String(100);
+            postalCode: String(20);
+            isDefault: Boolean default false;
+        }
+
+        enum CustomerType {
+            Regular = 1;
+            VIP = 2;
+            Wholesale = 3;
+            Distributor = 4;
+        }
+
+        enum AddressType {
+            Billing;
+            Shipping;
+            Both;
+        }
+
+        // ============================================================
+        // PRODUCT
+        // ============================================================
+
+        @Description: 'Product catalog'
+        entity Product : Auditable, TenantAware {
+            key ID: UUID;
+
+            @Sequence.Name: 'ProductCodeSeq'
+            @Sequence.Pattern: 'PRD-{category}-{seq:5}'
+            productCode: Code;
+
+            @Mandatory: true
+            name: Name;
+
+            description: Description;
+
+            category: association [0,1] to ProductCategory;
+
+            unitPrice: Amount;
+            costPrice: Amount;
+            unitOfMeasure: String(10) default 'PCS';
+
+            // Inventory
+            stockQuantity: Quantity default 0;
+            reorderLevel: Quantity default 10;
+
+            isActive: Boolean default true;
+        }
+
+        entity ProductCategory : Auditable, TenantAware {
+            key ID: UUID;
+
+            code: ShortCode;
+            name: Name;
+            parentCategory: association [0,1] to ProductCategory;
+            isActive: Boolean default true;
+        }
+
+        // ============================================================
+        // VENDOR / SUPPLIER
+        // ============================================================
+
+        @Description: 'Vendor/Supplier master data'
+        entity Vendor : Auditable, SoftDeletable, TenantAware {
+            key ID: UUID;
+
+            @Sequence.Name: 'VendorCodeSeq'
+            @Sequence.Pattern: 'VEN-{seq:6}'
+            vendorCode: Code;
+
+            @Mandatory: true
+            name: Name;
+
+            email: Email;
+            phone: Phone;
+
+            taxId: String(20);
+            paymentTerms: Integer default 30;
+
+            address: Address;
+
+            isActive: Boolean default true;
+        }
+
+        // ============================================================
+        // WAREHOUSE / LOCATION
+        // ============================================================
+
+        entity Warehouse : Auditable, TenantAware, CompanyAware {
+            key ID: UUID;
+
+            code: ShortCode;
+            name: Name;
+            address: Address;
+
+            warehouseType: WarehouseType default #Standard;
+            isActive: Boolean default true;
+
+            locations: composition [*] of StorageLocation;
+        }
+
+        entity StorageLocation: TenantAware {
+            key ID: UUID;
+
+            code: ShortCode;
+            name: Name;
+            zone: String(20);
+            aisle: String(10);
+            rack: String(10);
+            level: String(10);
+            bin: String(10);
+
+            locationType: LocationType default #Storage;
+            capacity: Quantity;
+            isActive: Boolean default true;
+        }
+
+        enum WarehouseType {
+            Standard;
+            Distribution;
+            Manufacturing;
+            Transit;
+            Quarantine;
+        }
+
+        enum LocationType {
+            Receiving;
+            Storage;
+            Picking;
+            Packing;
+            Shipping;
+            Staging;
+            Returns;
+        }
+
+    }
+}

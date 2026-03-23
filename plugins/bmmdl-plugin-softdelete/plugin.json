@@ -1,0 +1,10 @@
+{
+  "name": "BMMDL.Plugin.SoftDelete",
+  "version": "1.0.0",
+  "description": "Soft delete — converts DELETE to UPDATE is_deleted=true",
+  "author": "BMMDL Team",
+  "entryAssembly": "BMMDL.Plugin.SoftDelete.dll",
+  "dependencies": [],
+  "bmmdlModules": [],
+  "autoLoad": true
+}

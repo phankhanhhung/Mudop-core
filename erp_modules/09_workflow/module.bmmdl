@@ -1,0 +1,336 @@
+﻿// ============================================================
+// Module: Workflow
+// Description: Business process automation and workflow engine
+// Install Order: 9 (depends on all modules 1-8)
+// ============================================================
+
+module Workflow version '1.0.0' {
+    author: 'ERP Team';
+    description: 'Workflow automation engine with approvals, notifications, and business rules';
+    depends on Core version '>=1.0.0';
+    depends on MasterData version '>=1.0.0';
+    depends on HR version '>=1.0.0';
+    depends on Finance version '>=1.0.0';
+    depends on SCM version '>=1.0.0';
+    depends on Rules version '>=1.0.0';
+    depends on Services version '>=1.0.0';
+    depends on Security version '>=1.0.0';
+    imports Core, MasterData, HR, Finance, SCM, Rules, Services, Security;
+    publishes Workflow;
+
+    namespace Workflow {
+        // ============================================================
+        // CORE ENTITIES
+        // ============================================================
+
+        @Description: 'Workflow process definition'
+        entity WorkflowDefinition : Auditable, TenantAware {
+            key ID: UUID;
+
+            code: ShortCode;
+            name: Name;
+            description: Description;
+            targetEntity: String(100);
+            isActive: Boolean default true;
+            version: Integer default 1;
+
+            steps: composition [*] of WorkflowStep;
+            transitions: composition [*] of WorkflowTransition;
+        }
+
+        @Description: 'Step in a workflow process'
+        entity WorkflowStep {
+            key ID: UUID;
+
+            stepCode: ShortCode;
+            stepName: Name;
+            stepType: StepType;
+            assigneeType: AssigneeType;
+            assigneeRole: String(100);
+            timeoutHours: Integer;
+
+            actions: composition [*] of StepAction;
+        }
+
+        enum StepType {
+            Start;
+            Approval;
+            Review;
+            Task;
+            Notification;
+            Decision;
+            End;
+        }
+
+        enum AssigneeType {
+            User;
+            Role;
+            Manager;
+            Department;
+            Custom;
+        }
+
+        @Description: 'Actions available in a workflow step'
+        entity StepAction {
+            key ID: UUID;
+
+            actionCode: ShortCode;
+            actionLabel: Name;
+            actionType: ActionType;
+            nextStepCode: ShortCode;
+            requiresComment: Boolean default false;
+        }
+
+        enum ActionType {
+            Approve;
+            Reject;
+            Delegate;
+            RequestInfo;
+            Complete;
+            Cancel;
+        }
+
+        @Description: 'Transition between workflow steps'
+        entity WorkflowTransition {
+            key ID: UUID;
+
+            fromStepCode: ShortCode;
+            toStepCode: ShortCode;
+            condition: Description;
+            priority: Integer default 0;
+        }
+
+        @Description: 'Running workflow instance'
+        entity WorkflowInstance : Auditable, TenantAware {
+            key ID: UUID;
+
+            instanceNumber: String(50);
+            definition: association [1] to WorkflowDefinition;
+            targetEntityId: UUID;
+            currentStep: ShortCode;
+            status: InstanceStatus;
+            startedAt: Timestamp;
+            completedAt: Timestamp;
+            currentAssignee: UUID;
+            totalDuration: Integer;
+
+            executionHistory: composition [*] of WorkflowHistory;
+        }
+
+        enum InstanceStatus {
+            Draft;
+            Running;
+            Paused;
+            Completed;
+            Cancelled;
+            Failed;
+        }
+
+        @Description: 'Workflow execution history'
+        entity WorkflowHistory {
+            key ID: UUID;
+
+            stepCode: ShortCode;
+            actionTaken: ShortCode;
+            performedBy: UUID;
+            performedAt: Timestamp;
+            comment: Description;
+            duration: Integer;
+        }
+
+        // ============================================================
+        // SEQUENCES - Auto-numbering
+        // ============================================================
+
+        @Description: 'Auto-generated workflow instance numbers'
+        sequence WorkflowNumberSeq {
+            pattern: 'WF-{year}-{seq:6}';
+            start: 1000;
+            padding: 6;
+            scope: tenant;
+            reset on yearly;
+        }
+
+        @Description: 'Task reference number generator'
+        sequence TaskNumberSeq {
+            pattern: 'TASK-{seq:8}';
+            start: 1;
+            padding: 8;
+            scope: tenant;
+            reset on never;
+        }
+
+        // ============================================================
+        // VIEWS - Reporting and Dashboards
+        // ============================================================
+
+        @Description: 'Pending approvals for current user'
+        define view PendingApprovals as 
+            select
+                wi.ID,
+                wi.instanceNumber,
+                wd.name,
+                wi.currentStep,
+                wi.startedAt,
+                wi.targetEntityId
+            from WorkflowInstance as wi
+            inner join WorkflowDefinition as wd on wi.definition.ID = wd.ID
+            where wi.status = #Running
+
+        @Description: 'Workflow performance metrics by definition'
+        define view WorkflowMetrics as
+            select
+                wd.code,
+                wd.name,
+                count(wi.ID),
+                avg(wi.totalDuration)
+            from WorkflowInstance as wi
+            inner join WorkflowDefinition as wd on wi.definition.ID = wd.ID
+            group by wd.code, wd.name
+
+        @Description: 'Active workflows dashboard'
+        define view ActiveWorkflowsDashboard as
+            select
+                wi.ID,
+                wi.instanceNumber,
+                wd.name,
+                wi.currentStep,
+                wi.status,
+                wi.startedAt
+            from WorkflowInstance as wi
+            inner join WorkflowDefinition as wd on wi.definition.ID = wd.ID
+            where wi.status in (#Running, #Paused)
+
+        // ============================================================
+        // EVENTS - Domain Events
+        // ============================================================
+
+        @Description: 'Fired when workflow instance is created'
+        event WorkflowStarted {
+            workflowId: UUID;
+            definitionCode: ShortCode;
+            targetEntityId: UUID;
+            initiatedBy: UUID;
+            startedAt: Timestamp;
+        }
+
+        @Description: 'Fired when workflow step is completed'
+        event StepCompleted {
+            workflowId: UUID;
+            stepCode: ShortCode;
+            actionTaken: ShortCode;
+            performedBy: UUID;
+            completedAt: Timestamp;
+            nextStepCode: ShortCode;
+        }
+
+        @Description: 'Fired when workflow is completed'
+        event WorkflowCompleted {
+            workflowId: UUID;
+            outcome: String(50);
+            completedAt: Timestamp;
+            totalDuration: Integer;
+        }
+
+        @Description: 'Fired when approval is pending'
+        event ApprovalPending {
+            workflowId: UUID;
+            stepCode: ShortCode;
+            assigneeId: UUID;
+            assigneeRole: String(100);
+            deadline: Timestamp;
+        }
+
+        // ============================================================
+        // RULES - Business Validation
+        // ============================================================
+
+        @Description: 'Validate workflow and auto-complete fields'
+        rule WorkflowTransitionRule for WorkflowInstance on before update {
+            validate currentStep is not null
+                message 'Current step cannot be empty' severity error;
+
+            when status = #Completed then {
+                compute completedAt = $now;
+            }
+        }
+
+        @Description: 'Validate workflow definition before activation'
+        rule ValidateDefinitionRule for WorkflowDefinition on before update {
+            when isActive = true and $old.isActive = false then {
+                validate count(steps) >= 2
+                    message 'Workflow must have at least 2 steps' severity error;
+            }
+        }
+
+        @Description: 'Initialize workflow instance on create'
+        rule InitializeWorkflowRule for WorkflowInstance on before create {
+            compute startedAt = $now;
+            compute status = #Running;
+        }
+
+        // ============================================================
+        // SERVICES - API Endpoints
+        // ============================================================
+
+        @Description: 'Workflow management service'
+        service WorkflowService {
+            entity Definitions as WorkflowDefinition;
+            entity Instances as WorkflowInstance;
+            entity ExecutionHistory as WorkflowHistory;
+
+            entity PendingView as PendingApprovals;
+            entity Metrics as WorkflowMetrics;
+            entity Dashboard as ActiveWorkflowsDashboard;
+
+            action startWorkflow(definitionCode: ShortCode, targetEntityId: UUID, metadata: Description) returns WorkflowInstance;
+            action performAction(instanceId: UUID, actionCode: ShortCode, comment: Description) returns WorkflowInstance;
+            action delegateTask(instanceId: UUID, toUserId: UUID, reason: Description) returns Boolean;
+            action cancelWorkflow(instanceId: UUID, reason: Description) returns Boolean;
+
+            function getPendingTasks(userId: UUID) returns WorkflowInstance;
+            function getInstanceHistory(instanceId: UUID) returns WorkflowHistory;
+        }
+
+        @Description: 'Notification delivery service'
+        service NotificationService {
+            action sendEmail(recipient: String(255), subject: String(200), body: Description, templateCode: ShortCode) returns Boolean;
+            action sendNotification(userId: UUID, title: String(200), content: Description, priority: Integer) returns Boolean;
+            action sendBulkNotification(roleCode: ShortCode, title: String(200), content: Description) returns Integer;
+        }
+
+        // ============================================================
+        // ACCESS CONTROL - Role-based Security
+        // ============================================================
+
+        @Description: 'Workflow definition access'
+        access control for WorkflowDefinition {
+            grant read to role 'workflow_viewer';
+            grant read, update to role 'workflow_designer';
+            grant create, read, update, delete to role 'workflow_admin';
+
+            deny delete to role 'workflow_designer'
+                where isActive = true;
+        }
+
+        @Description: 'Workflow instance access - users can only see their own'
+        access control for WorkflowInstance {
+            grant read to authenticated
+                where createdBy = $userId or currentAssignee = $userId;
+
+            grant read, update to role 'workflow_manager';
+            grant create, read, update, delete to role 'workflow_admin';
+
+            restrict fields {
+                targetEntityId: masked;
+            };
+        }
+
+        @Description: 'Workflow history is read-only'
+        access control for WorkflowHistory {
+            grant read to authenticated;
+            deny create, update, delete to role 'workflow_user';
+        }
+
+    }
+}

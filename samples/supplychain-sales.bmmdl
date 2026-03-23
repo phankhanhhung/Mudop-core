@@ -1,0 +1,415 @@
+// ============================================================
+// BMMDL Sample: Supply Chain - Sales & Distribution
+// ============================================================
+
+namespace SupplyChain;
+
+using Common;
+using Manufacturing;
+
+// ============================================================
+// CUSTOMER MASTER
+// ============================================================
+
+@Core.Description: 'Customer Master'
+@Tenant.Aware: true
+@Company.Aware: true
+entity Customer : Auditable {
+    key ID: UUID;
+    
+    @Sequence.Pattern: 'CUS-{company}-{seq:6}'
+    customerCode: String(50);
+    
+    @Core.Mandatory: true
+    name: String(200);
+    
+    legalName: String(200);
+    taxId: String(50);
+    
+    // Contact
+    contactPerson: String(100);
+    phone: String(30);
+    email: String(100);
+    
+    // Address
+    addressLine1: String(200);
+    addressLine2: String(200);
+    city: String(100);
+    state: String(100);
+    country: String(100);
+    postalCode: String(20);
+    
+    // Sales
+    salesRep: String(100);
+    territory: String(50);
+    customerGroup: String(50);
+    
+    // Credit
+    creditLimit: UnitCost default 0;
+    paymentTerms: String(50);
+    currency: String(3);
+    
+    // Pricing
+    priceList: association [0,1] to PriceList;
+    discountGroup: String(50);
+    
+    status: CustomerStatus default #Active;
+    
+    // Addresses
+    addresses: composition [*] of CustomerAddress;
+}
+
+entity CustomerAddress {
+    key ID: UUID;
+    
+    addressType: AddressType;
+    addressName: String(100);
+    contactPerson: String(100);
+    phone: String(30);
+    
+    addressLine1: String(200);
+    addressLine2: String(200);
+    city: String(100);
+    state: String(100);
+    country: String(100);
+    postalCode: String(20);
+    
+    isDefault: Boolean default false;
+}
+
+enum AddressType {
+    Billing;
+    Shipping;
+    Both;
+}
+
+enum CustomerStatus {
+    Active;
+    OnHold;
+    Blocked;
+    Inactive;
+}
+
+// ============================================================
+// PRICE LIST
+// ============================================================
+
+entity PriceList : Auditable {
+    key ID: UUID;
+    
+    @Sequence.Pattern: 'PL-{seq:4}'
+    priceListCode: String(20);
+    
+    name: String(100);
+    description: String(500);
+    
+    currency: String(3);
+    
+    effectiveFrom: Date;
+    effectiveTo: Date;
+    
+    isActive: Boolean default true;
+    
+    prices: composition [*] of PriceListItem;
+}
+
+entity PriceListItem {
+    key ID: UUID;
+    
+    item: association [1] to Item;
+    
+    unitPrice: UnitCost;
+    minQty: Quantity default 1;
+    maxQty: Quantity;
+    
+    discountPercent: Decimal(5, 2) default 0;
+    
+    effectiveFrom: Date;
+    effectiveTo: Date;
+}
+
+// ============================================================
+// SALES ORDER
+// ============================================================
+
+@Core.Description: 'Sales Order'
+@Tenant.Aware: true
+@Company.Aware: true
+entity SalesOrder : Auditable {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Core.Immutable
+    @Sequence.Pattern: 'SO-{company}-{year}{month}-{seq:5}'
+    @Sequence.Scope: #Company
+    @Sequence.ResetOn: #Monthly
+    orderNumber: String(50);
+    
+    orderType: SalesOrderType;
+    
+    @Core.Mandatory: true
+    customer: association [1] to Customer;
+    
+    @Core.Mandatory: true
+    orderDate: Date default $today;
+    
+    @Core.Label: 'Requested Delivery'
+    requestedDeliveryDate: Date;
+    
+    @Core.Label: 'Promised Delivery'
+    promisedDeliveryDate: Date;
+    
+    // Addresses
+    billingAddress: association [0,1] to CustomerAddress;
+    shippingAddress: association [0,1] to CustomerAddress;
+    
+    // Shipping
+    shippingMethod: String(50);
+    carrier: String(100);
+    
+    // Pricing
+    priceList: association [0,1] to PriceList;
+    currency: String(3);
+    exchangeRate: Decimal(12, 6) default 1;
+    
+    // Amounts
+    @Core.Computed
+    subtotal: UnitCost;
+    
+    discountPercent: Decimal(5, 2) default 0;
+    
+    @Core.Computed
+    discountAmount: UnitCost;
+    
+    @Core.Label: 'Freight Charges'
+    freightAmount: UnitCost default 0;
+    
+    taxPercent: Decimal(5, 2) default 0;
+    
+    @Core.Computed
+    taxAmount: UnitCost;
+    
+    @Core.Computed
+    totalAmount: UnitCost;
+    
+    // Payment
+    paymentTerms: String(50);
+    paymentStatus: PaymentStatus default #Pending;
+    
+    // Status
+    status: SalesOrderStatus default #Draft;
+    
+    // References
+    customerPONumber: String(50);
+    quotationRef: String(50);
+    
+    // Sales
+    salesRep: String(100);
+    
+    remarks: String(2000);
+    
+    lines: composition [*] of SalesOrderLine;
+}
+
+enum SalesOrderType {
+    Standard;
+    Rush;
+    Blanket;
+    Consignment;
+    Sample;
+    Return;
+}
+
+enum SalesOrderStatus {
+    Draft;
+    Confirmed;
+    PartiallyAllocated;
+    Allocated;
+    PartiallyShipped;
+    Shipped;
+    PartiallyInvoiced;
+    Invoiced;
+    Completed;
+    Cancelled;
+    OnHold;
+}
+
+enum PaymentStatus {
+    Pending;
+    PartiallyPaid;
+    Paid;
+    Overdue;
+    Refunded;
+}
+
+entity SalesOrderLine {
+    key ID: UUID;
+    
+    lineNumber: Integer;
+    
+    item: association [1] to Item;
+    
+    description: String(200);
+    
+    @Core.Mandatory: true
+    orderedQty: Quantity;
+    
+    @Core.Label: 'Allocated Quantity'
+    allocatedQty: Quantity default 0;
+    
+    @Core.Label: 'Shipped Quantity'
+    shippedQty: Quantity default 0;
+    
+    @Core.Label: 'Invoiced Quantity'
+    invoicedQty: Quantity default 0;
+    
+    uom: UnitOfMeasure;
+    
+    @Core.Mandatory: true
+    unitPrice: UnitCost;
+    
+    discountPercent: Decimal(5, 2) default 0;
+    
+    @Core.Computed
+    lineTotal: UnitCost;
+    
+    @Core.Label: 'Requested Delivery'
+    requestedDeliveryDate: Date;
+    
+    @Core.Label: 'Promised Delivery'
+    promisedDeliveryDate: Date;
+    
+    // Fulfillment
+    warehouse: association [0,1] to Warehouse;
+    
+    status: SOLineStatus default #Open;
+    
+    remarks: String(500);
+}
+
+enum SOLineStatus {
+    Open;
+    PartiallyAllocated;
+    Allocated;
+    PartiallyShipped;
+    Shipped;
+    Invoiced;
+    Closed;
+    Cancelled;
+}
+
+// ============================================================
+// SHIPMENT / DELIVERY
+// ============================================================
+
+@Core.Description: 'Shipment / Delivery'
+@Tenant.Aware: true
+@Company.Aware: true
+entity Shipment : Auditable {
+    key ID: UUID;
+    
+    @Sequence.Pattern: 'SHP-{company}-{year}{month}-{seq:5}'
+    @Sequence.Scope: #Company
+    shipmentNumber: String(50);
+    
+    shipmentType: ShipmentType;
+    
+    @Core.Mandatory: true
+    shipDate: Date default $today;
+    
+    // Customer
+    customer: association [1] to Customer;
+    
+    // Origin
+    fromPlant: association [1] to Plant;
+    fromWarehouse: association [1] to Warehouse;
+    
+    // Destination
+    shippingAddress: association [0,1] to CustomerAddress;
+    deliveryAddress: String(500);
+    
+    // Carrier
+    carrier: String(100);
+    carrierService: String(50);
+    trackingNumber: String(100);
+    vehicleNumber: String(50);
+    
+    // Dates
+    expectedDelivery: Date;
+    actualDelivery: Date;
+    
+    // Weight/Volume
+    totalWeight: Weight;
+    totalVolume: Decimal(12, 4);
+    numberOfPackages: Integer;
+    
+    // Cost
+    freightCost: UnitCost;
+    insuranceCost: UnitCost;
+    
+    status: ShipmentStatus default #Draft;
+    
+    // POD
+    receivedBy: String(100);
+    receivedDate: Timestamp;
+    podSignature: String(500);
+    
+    remarks: String(2000);
+    
+    lines: composition [*] of ShipmentLine;
+}
+
+enum ShipmentType {
+    SalesOrder;
+    StockTransfer;
+    Return;
+    Sample;
+}
+
+enum ShipmentStatus {
+    Draft;
+    Packed;
+    ReadyToShip;
+    InTransit;
+    Delivered;
+    PartiallyDelivered;
+    Returned;
+    Cancelled;
+}
+
+entity ShipmentLine {
+    key ID: UUID;
+    
+    lineNumber: Integer;
+    
+    item: association [1] to Item;
+    
+    @Core.Mandatory: true
+    shippedQty: Quantity;
+    
+    deliveredQty: Quantity default 0;
+    
+    uom: UnitOfMeasure;
+    
+    // Tracking
+    batchNumber: BatchNumber;
+    serialNumber: SerialNumber;
+    
+    // Source
+    salesOrderLine: association [0,1] to SalesOrderLine;
+    
+    // Package info
+    packageNumber: String(50);
+    grossWeight: Weight;
+    netWeight: Weight;
+    
+    status: ShipmentLineStatus default #Pending;
+}
+
+enum ShipmentLineStatus {
+    Pending;
+    Packed;
+    Shipped;
+    Delivered;
+    Returned;
+}

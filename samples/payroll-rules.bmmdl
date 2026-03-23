@@ -1,0 +1,319 @@
+// ============================================================
+// BMMDL Sample: Payroll - Business Rules (Complex Expressions)
+// Domain: Payroll Processing
+// Coverage: Tax calculation, OT rates, deductions, complex formulas
+// ============================================================
+
+namespace Payroll;
+
+// ============================================================
+// PAYROLL RUN CALCULATION RULES
+// ============================================================
+
+rule PayrollRunInitialization for PayrollRun on before create {
+    // Calculate daily and hourly rates
+    compute dailyRate = basicSalary / workingDays;
+    compute hourlyRate = dailyRate / 8;
+    
+    // Initialize YTD from previous runs (simplified - actual implementation would use period year)
+    compute ytdGross = sum(previousRuns.totalEarnings where status = #Paid);
+    compute ytdTax = sum(previousRuns.totalTax where status = #Paid);
+    compute ytdNet = sum(previousRuns.netPay where status = #Paid);
+}
+
+rule PayrollEarningsCalculation for PayrollRun on before update {
+    // Calculate total earnings from line items
+    compute totalEarnings = sum(earnings.amount);
+    
+    // Calculate taxable earnings
+    compute taxableEarnings = sum(earnings.amount where isTaxable = true);
+    
+    // Calculate total deductions
+    compute totalDeductions = sum(deductions.amount);
+    
+    // Calculate total tax
+    compute totalTax = sum(taxes.taxAmount);
+    
+    // Calculate net pay
+    compute netPay = totalEarnings - totalDeductions - totalTax;
+    
+    // Update YTD
+    compute ytdGross = ytdGross + totalEarnings;
+    compute ytdTax = ytdTax + totalTax;
+    compute ytdNet = ytdNet + netPay;
+}
+
+rule PayrollValidation for PayrollRun on before update {
+    // Net pay cannot be negative
+    validate netPay >= 0
+        message 'Net pay cannot be negative. Review deductions.'
+        severity error;
+    
+    // Validate working days
+    validate daysWorked <= workingDays
+        message 'Days worked cannot exceed working days in period'
+        severity error;
+    
+    // Validate overtime hours for non-exempt employees
+    when employee.employmentType = #FullTime and overtimeHours > 40 then {
+        validate false
+            message 'Overtime exceeds maximum allowed (40 hours)'
+            severity warning;
+    }
+}
+
+// ============================================================
+// OVERTIME CALCULATION RULES
+// ============================================================
+
+rule OvertimeRateCalculation for PayrollEarning on before create {
+    // Calculate overtime amount based on type
+    when isOvertime = true then {
+        compute amount = case overtimeType
+            when 'Regular' then quantity * rate * 1.5
+            when 'Weekend' then quantity * rate * 2.0
+            when 'Holiday' then quantity * rate * 2.5
+            else quantity * rate * 1.5
+        end;
+    }
+    
+    // Regular earnings
+    when isOvertime = false then {
+        compute amount = quantity * rate;
+    }
+}
+
+rule OvertimeApprovalValidation for OvertimeRequest on before update {
+    // Cannot approve more than requested
+    when status = 'Approved' then {
+        validate actualHours <= hours
+            message 'Approved hours cannot exceed requested hours'
+            severity error;
+        
+        // Set approved info
+        compute approvedAt = $now;
+    }
+    
+    // Weekend OT requires manager+1 approval
+    when overtimeType = 'Weekend' and hours > 8 then {
+        validate approvedBy is not null
+            message 'Weekend overtime over 8 hours requires senior manager approval'
+            severity error;
+    }
+}
+
+// ============================================================
+// TAX CALCULATION RULES
+// ============================================================
+
+rule TaxCalculation for PayrollTax on before create, before update {
+    // Calculate tax based on bracket
+    when taxBracket is not null then {
+        compute taxAmount = case
+            when taxableIncome <= 0 then 0
+            when taxableIncome <= taxBracket.maxIncome then 
+                taxBracket.baseTax + ((taxableIncome - taxBracket.minIncome) * (taxBracket.taxRate / 100))
+            else 
+                taxBracket.baseTax + ((taxBracket.maxIncome - taxBracket.minIncome) * (taxBracket.taxRate / 100))
+        end;
+    }
+    
+    // Round to 2 decimal places
+    compute taxAmount = round(taxAmount, 2);
+}
+
+rule SocialSecurityCalculation for PayrollDeduction on before create {
+    // Social Security calculation (employer + employee)
+    when deductionConfig.deductionType = #SocialSecurity then {
+        // Employee portion: 6.2% up to wage base
+        compute amount = case
+            when baseAmount * 0.062 > 9932.40 then 9932.40  // 2024 max
+            else round(baseAmount * 0.062, 2)
+        end;
+        
+        // Employer matches
+        compute isEmployerContribution = true;
+        compute employerAmount = amount;
+    }
+}
+
+rule MedicareCalculation for PayrollDeduction on before create {
+    // Medicare calculation
+    when deductionConfig.code = 'MEDICARE' then {
+        // 1.45% standard, additional 0.9% over $200k
+        compute amount = case
+            when baseAmount > 200000 then 
+                round((200000 * 0.0145) + ((baseAmount - 200000) * 0.0235), 2)
+            else 
+                round(baseAmount * 0.0145, 2)
+        end;
+        
+        compute isEmployerContribution = true;
+        compute employerAmount = round(baseAmount * 0.0145, 2); // Employer only pays 1.45%
+    }
+}
+
+// ============================================================
+// DEDUCTION CALCULATION RULES
+// ============================================================
+
+rule LoanDeductionCalculation for PayrollDeduction on before create {
+    // Loan deductions
+    when deductionConfig.deductionType = #LoanRepayment then {
+        // Don't exceed remaining balance
+        compute amount = case
+            when deductionConfig.defaultAmount > employee.loanBalance then employee.loanBalance
+            else deductionConfig.defaultAmount
+        end;
+        
+        // Update employee loan balance
+        compute employeePayroll.employee.loanBalance = employeePayroll.employee.loanBalance - amount;
+    }
+}
+
+rule UnpaidLeaveDeduction for PayrollDeduction on before create {
+    // Unpaid leave deduction
+    when deductionConfig.deductionType = #UnpaidLeave then {
+        compute amount = round(payrollRun.dailyRate * payrollRun.unpaidLeaveDays, 2);
+        compute deductionDesc = concat('Unpaid leave: ', to_string(payrollRun.unpaidLeaveDays), ' days');
+    }
+}
+
+rule HealthInsuranceDeduction for PayrollDeduction on before create {
+    // Health insurance based on plan
+    when deductionConfig.deductionType = #HealthInsurance then {
+        // Pre-tax deduction
+        compute isPreTax = true;
+        
+        // Amount based on coverage type (from employee setup)
+        compute amount = case employeePayroll.healthCoverageType
+            when 'Individual' then 250
+            when 'PlusSpouse' then 450
+            when 'PlusChildren' then 400
+            when 'Family' then 650
+            else 250
+        end;
+        
+        // Employer contribution (typically 70-80%)
+        compute isEmployerContribution = true;
+        compute employerAmount = round(amount * 0.75, 2);
+    }
+}
+
+// ============================================================
+// BONUS CALCULATION RULES
+// ============================================================
+
+rule BonusCalculation for EmployeeBonus on before update {
+    // Calculate bonus based on method
+    compute calculatedAmount = case bonusPayout.calculationMethod
+        when 'Fixed' then bonusPayout.defaultAmount
+        when 'PercentOfSalary' then round(baseSalary * (percentage / 100), 2)
+        else bonusPayout.defaultAmount
+    end;
+    
+    // Apply performance multiplier if applicable
+    when bonusPayout.bonusType = 'Performance' then {
+        compute adjustedAmount = case employee.lastPerformanceRating
+            when #Exceptional then round(calculatedAmount * 1.5, 2)
+            when #ExceedsExpectations then round(calculatedAmount * 1.25, 2)
+            when #MeetsExpectations then calculatedAmount
+            when #NeedsImprovement then round(calculatedAmount * 0.5, 2)
+            else 0
+        end;
+    }
+    
+    // Pro-rate for partial year employees
+    when datediff($today, employee.hireDate) < 365 then {
+        compute adjustedAmount = round(adjustedAmount * (datediff($today, employee.hireDate) / 365), 2);
+    }
+    
+    // Set final amount
+    compute finalAmount = coalesce(adjustedAmount, calculatedAmount);
+}
+
+rule BonusPayoutApproval for BonusPayout on before update {
+    // Calculate totals when approved
+    when status = #Approved and $old.status = #Draft then {
+        compute totalAmount = sum(employeeBonuses.finalAmount);
+        compute employeeCount = count(employeeBonuses);
+        
+        // Validate budget
+        validate totalAmount <= budgetAmount
+            message 'Total bonus exceeds budget allocation'
+            severity error;
+    }
+}
+
+// ============================================================
+// PAYROLL PERIOD RULES
+// ============================================================
+
+rule PayrollPeriodCalculation for PayrollPeriod on before update {
+    // Calculate period totals
+    when status = #Calculated then {
+        compute totalEmployees = count(payrollRuns);
+        compute totalGross = sum(payrollRuns.totalEarnings);
+        compute totalDeductions = sum(payrollRuns.totalDeductions) + sum(payrollRuns.totalTax);
+        compute totalNet = sum(payrollRuns.netPay);
+        
+        compute processedAt = $now;
+    }
+}
+
+rule PayrollPeriodStatusTransition for PayrollPeriod on before update {
+    // Validate before processing
+    when status = #Processing and $old.status = #Draft then {
+        validate attendanceCutoffDate <= $today
+            message 'Attendance cutoff date must be in the past'
+            severity error;
+    }
+    
+    // Validate before approval
+    when status = #Approved and $old.status = #Calculated then {
+        validate count(payrollRuns where netPay < 0) = 0
+            message 'Cannot approve payroll with negative net pay'
+            severity error;
+        
+        compute approvedAt = $now;
+    }
+    
+    // Mark as paid
+    when status = #Paid and $old.status = #Approved then {
+        compute paidAt = $now;
+    }
+}
+
+// ============================================================
+// AUDIT AND COMPLIANCE RULES
+// ============================================================
+
+rule PayrollAuditTrail for PayrollRun on before update {
+    // Track version
+    compute versionNum = versionNum + 1;
+    compute modifiedAt = $now;
+    compute modifiedBy = $userId;
+    
+    // Cannot modify after paid
+    when $old.status = #Paid then {
+        validate false
+            message 'Cannot modify paid payroll. Create adjustment in new period.'
+            severity error;
+    }
+}
+
+rule MinimumWageCompliance for PayrollRun on before update {
+    // Minimum wage check (federal minimum $7.25/hour)
+    when hourlyRate < 7.25 then {
+        validate false
+            message 'Hourly rate below federal minimum wage'
+            severity error;
+    }
+    
+    // Overtime law compliance (FLSA)
+    when employee.isExempt = false and overtimeHours > 0 then {
+        validate sum(earnings.amount where isOvertime = true) >= overtimeHours * hourlyRate * 1.5
+            message 'Overtime pay does not meet FLSA requirements'
+            severity error;
+    }
+}

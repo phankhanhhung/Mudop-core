@@ -1,0 +1,10 @@
+{
+  "name": "BMMDL.Plugin.Reporting",
+  "version": "1.0.0",
+  "description": "Saved report templates with JSONB configuration",
+  "author": "BMMDL Team",
+  "entryAssembly": "BMMDL.Plugin.Reporting.dll",
+  "dependencies": [],
+  "bmmdlModules": [],
+  "autoLoad": true
+}

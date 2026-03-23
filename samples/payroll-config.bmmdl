@@ -1,0 +1,222 @@
+// ============================================================
+// BMMDL Sample: Payroll - Types and Entities
+// Domain: Payroll Processing
+// ============================================================
+
+namespace Payroll;
+
+// ============================================================
+// ENUMERATIONS
+// ============================================================
+
+enum PayrollStatus {
+    Draft;
+    Processing;
+    Calculated;
+    Approved;
+    Paid;
+    Cancelled;
+}
+
+enum EarningType {
+    BasicSalary;
+    Overtime;
+    Bonus;
+    Commission;
+    Allowance;
+    Incentive;
+    Reimbursement;
+}
+
+enum DeductionType {
+    Tax;
+    SocialSecurity;
+    HealthInsurance;
+    PensionFund;
+    LoanRepayment;
+    UnpaidLeave;
+    Other;
+}
+
+enum PayFrequency {
+    Weekly;
+    BiWeekly;
+    SemiMonthly;
+    Monthly;
+}
+
+enum TaxStatus {
+    Single;
+    Married;
+    MarriedFilingSeparately;
+    HeadOfHousehold;
+}
+
+// ============================================================
+// PAYROLL CONFIGURATION
+// ============================================================
+
+@Core.Description: 'Payroll period definition'
+entity PayrollPeriod : Auditable, TenantAware {
+    key ID: UUID;
+    periodCode: String(20);
+    periodName: String(100);
+    
+    // Dates
+    startDate: Date;
+    endDate: Date;
+    payDate: Date;
+    
+    // Cutoff
+    attendanceCutoffDate: Date;
+    adjustmentCutoffDate: Date;
+    
+    // Status
+    status: PayrollStatus default #Draft;
+    
+    // Totals (computed)
+    totalEmployees: Integer default 0;
+    totalGross: Decimal(15, 2) default 0;
+    totalDeductions: Decimal(15, 2) default 0;
+    totalNet: Decimal(15, 2) default 0;
+    
+    // Approval
+    processedAt: DateTime;
+    processedBy: UUID;
+    approvedAt: DateTime;
+    approvedBy: UUID;
+    paidAt: DateTime;
+    
+    // Payroll runs
+    payrollRuns: composition [*] of PayrollRun;
+}
+
+@Core.Description: 'Earning type configuration'
+entity EarningConfig : Auditable, TenantAware {
+    key ID: UUID;
+    code: String(20);
+    name: String(100);
+    description: String(500);
+    earningType: EarningType;
+    
+    // Calculation
+    isTaxable: Boolean default true;
+    affectsSocialSecurity: Boolean default true;
+    isRecurring: Boolean default false;
+    
+    // Default values
+    defaultAmount: Decimal(15, 2);
+    calculationMethod: String(20) default 'Fixed'; // Fixed, Percentage, Formula
+    calculationFormula: String(500);
+    
+    // GL Account
+    glAccountCode: String(20);
+    
+    isActive: Boolean default true;
+}
+
+@Core.Description: 'Deduction type configuration'
+entity DeductionConfig : Auditable, TenantAware {
+    key ID: UUID;
+    code: String(20);
+    name: String(100);
+    description: String(500);
+    deductionType: DeductionType;
+    
+    // Calculation
+    isPreTax: Boolean default false;
+    isRecurring: Boolean default true;
+    isMandatory: Boolean default false;
+    
+    // Limits
+    maxAmount: Decimal(15, 2);
+    maxPercentage: Percentage;
+    
+    // Default values
+    defaultAmount: Decimal(15, 2);
+    calculationMethod: String(20) default 'Fixed'; // Fixed, Percentage, Tiered
+    calculationFormula: String(500);
+    
+    // GL Account
+    glAccountCode: String(20);
+    
+    isActive: Boolean default true;
+}
+
+@Core.Description: 'Tax bracket configuration'
+entity TaxBracket : Auditable, TenantAware {
+    key ID: UUID;
+    name: String(100);
+    taxYear: Integer;
+    taxStatus: TaxStatus;
+    
+    minIncome: Decimal(15, 2);
+    maxIncome: Decimal(15, 2);
+    taxRate: Percentage;
+    baseTax: Decimal(15, 2);
+    
+    effectiveFrom: Date;
+    effectiveTo: Date;
+    isActive: Boolean default true;
+}
+
+// ============================================================
+// EMPLOYEE PAYROLL SETUP
+// ============================================================
+
+@Core.Description: 'Employee payroll configuration'
+entity EmployeePayroll : Auditable {
+    key ID: UUID;
+    
+    // Pay configuration
+    payFrequency: PayFrequency default #Monthly;
+    bankName: String(100);
+    bankAccountNumber: String(30);
+    bankRoutingNumber: String(20);
+    paymentMethod: String(20) default 'DirectDeposit'; // DirectDeposit, Check
+    
+    // Tax
+    taxStatus: TaxStatus default #Single;
+    allowances: Integer default 0;
+    additionalWithholding: Decimal(10, 2) default 0;
+    isExempt: Boolean default false;
+    
+    // Social Security
+    socialSecurityNumber: String(20);
+    socialSecurityOptOut: Boolean default false;
+    
+    employee: association [1] to HR.Employee;
+    
+    // Recurring earnings/deductions
+    recurringEarnings: composition [*] of RecurringEarning;
+    recurringDeductions: composition [*] of RecurringDeduction;
+}
+
+@Core.Description: 'Recurring employee earning'
+entity RecurringEarning {
+    key ID: UUID;
+    amount: Decimal(15, 2);
+    startDate: Date;
+    endDate: Date;
+    isActive: Boolean default true;
+    
+    employeePayroll: association [1] to EmployeePayroll;
+    earningConfig: association [1] to EarningConfig;
+}
+
+@Core.Description: 'Recurring employee deduction'
+entity RecurringDeduction {
+    key ID: UUID;
+    amount: Decimal(15, 2);
+    percentage: Percentage;
+    startDate: Date;
+    endDate: Date;
+    remainingAmount: Decimal(15, 2); // For loans
+    isActive: Boolean default true;
+    
+    employeePayroll: association [1] to EmployeePayroll;
+    deductionConfig: association [1] to DeductionConfig;
+}
+
+
+

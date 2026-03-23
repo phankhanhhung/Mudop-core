@@ -1,0 +1,344 @@
+// ============================================================
+// BMMDL Sample: Supply Chain - Purchasing
+// ============================================================
+
+namespace SupplyChain;
+
+using Common;
+using Manufacturing;
+
+// ============================================================
+// PURCHASE REQUISITION
+// ============================================================
+
+@Core.Description: 'Purchase Requisition'
+@Tenant.Aware: true
+@Company.Aware: true
+entity PurchaseRequisition : Auditable {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Core.Immutable
+    @Sequence.Pattern: 'PR-{company}-{year}{month}-{seq:5}'
+    @Sequence.Scope: #Company
+    @Sequence.ResetOn: #Monthly
+    prNumber: String(50);
+    
+    @Core.Mandatory: true
+    requestDate: Date default $today;
+    
+    @Core.Label: 'Required By Date'
+    requiredDate: Date;
+    
+    // Requestor
+    requestedBy: String(100);
+    department: String(50);
+    
+    // Approval
+    status: DocumentStatus default #Draft;
+    approvedBy: String(100);
+    approvedDate: Date;
+    
+    remarks: String(2000);
+    
+    lines: composition [*] of PurchaseRequisitionLine;
+}
+
+entity PurchaseRequisitionLine {
+    key ID: UUID;
+    
+    lineNumber: Integer;
+    
+    item: association [1] to Item;
+    
+    @Core.Mandatory: true
+    quantity: Quantity;
+    
+    uom: UnitOfMeasure;
+    
+    @Core.Label: 'Required Date'
+    requiredDate: Date;
+    
+    @Core.Label: 'Estimated Unit Price'
+    estimatedPrice: UnitCost;
+    
+    @Core.Computed
+    estimatedTotal: UnitCost;
+    
+    // Suggested Vendor
+    suggestedVendor: association [0,1] to Vendor;
+    
+    // Destination
+    deliveryPlant: association [0,1] to Plant;
+    deliveryWarehouse: association [0,1] to Warehouse;
+    
+    // Link to PO
+    purchaseOrderLine: association [0,1] to PurchaseOrderLine;
+    
+    status: PRLineStatus default #Open;
+    
+    remarks: String(500);
+}
+
+enum PRLineStatus {
+    Open;
+    PartiallyOrdered;
+    Ordered;
+    Cancelled;
+}
+
+// ============================================================
+// PURCHASE ORDER
+// ============================================================
+
+@Core.Description: 'Purchase Order'
+@Tenant.Aware: true
+@Company.Aware: true
+entity PurchaseOrder : Auditable {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Core.Immutable
+    @Sequence.Pattern: 'PO-{company}-{year}{month}-{seq:5}'
+    @Sequence.Scope: #Company
+    @Sequence.ResetOn: #Monthly
+    poNumber: String(50);
+    
+    @Core.Label: 'PO Type'
+    poType: PurchaseOrderType;
+    
+    @Core.Mandatory: true
+    vendor: association [1] to Vendor;
+    
+    @Core.Mandatory: true
+    orderDate: Date default $today;
+    
+    @Core.Label: 'Expected Delivery'
+    expectedDeliveryDate: Date;
+    
+    // Delivery
+    deliveryPlant: association [1] to Plant;
+    deliveryWarehouse: association [0,1] to Warehouse;
+    deliveryAddress: String(500);
+    
+    // Payment
+    paymentTerms: String(50);
+    currency: String(3);
+    exchangeRate: Decimal(12, 6) default 1;
+    
+    // Amounts
+    @Core.Computed
+    subtotal: UnitCost;
+    
+    discountPercent: Decimal(5, 2) default 0;
+    
+    @Core.Computed
+    discountAmount: UnitCost;
+    
+    taxPercent: Decimal(5, 2) default 0;
+    
+    @Core.Computed
+    taxAmount: UnitCost;
+    
+    @Core.Computed
+    totalAmount: UnitCost;
+    
+    // Status
+    status: PurchaseOrderStatus default #Draft;
+    
+    // Approval
+    approvedBy: String(100);
+    approvedDate: Date;
+    
+    // References
+    contractRef: String(50);
+    quotationRef: String(50);
+    
+    remarks: String(2000);
+    
+    lines: composition [*] of PurchaseOrderLine;
+}
+
+enum PurchaseOrderType {
+    Standard;
+    Blanket;
+    Contract;
+    DropShip;
+    Consignment;
+}
+
+enum PurchaseOrderStatus {
+    Draft;
+    Submitted;
+    Approved;
+    Sent;
+    PartiallyReceived;
+    Received;
+    Invoiced;
+    Closed;
+    Cancelled;
+}
+
+entity PurchaseOrderLine {
+    key ID: UUID;
+    
+    lineNumber: Integer;
+    
+    item: association [1] to Item;
+    
+    @Core.Label: 'Vendor Item Code'
+    vendorItemCode: String(50);
+    
+    description: String(200);
+    
+    @Core.Mandatory: true
+    orderedQty: Quantity;
+    
+    @Core.Label: 'Received Quantity'
+    receivedQty: Quantity default 0;
+    
+    @Core.Label: 'Invoiced Quantity'
+    invoicedQty: Quantity default 0;
+    
+    uom: UnitOfMeasure;
+    
+    @Core.Mandatory: true
+    unitPrice: UnitCost;
+    
+    discountPercent: Decimal(5, 2) default 0;
+    
+    @Core.Computed
+    lineTotal: UnitCost;
+    
+    @Core.Label: 'Expected Delivery'
+    expectedDeliveryDate: Date;
+    
+    @Core.Label: 'Actual Delivery'
+    actualDeliveryDate: Date;
+    
+    status: POLineStatus default #Open;
+    
+    // References
+    requisitionLine: association [0,1] to PurchaseRequisitionLine;
+}
+
+enum POLineStatus {
+    Open;
+    PartiallyReceived;
+    Received;
+    Invoiced;
+    Closed;
+    Cancelled;
+}
+
+// ============================================================
+// GOODS RECEIPT (INBOUND)
+// ============================================================
+
+@Core.Description: 'Goods Receipt Note'
+@Tenant.Aware: true
+@Company.Aware: true
+entity GoodsReceipt : Auditable {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Core.Immutable
+    @Sequence.Pattern: 'GRN-{company}-{year}{month}-{seq:5}'
+    @Sequence.Scope: #Company
+    @Sequence.ResetOn: #Monthly
+    grnNumber: String(50);
+    
+    @Core.Label: 'Receipt Type'
+    receiptType: ReceiptType;
+    
+    @Core.Mandatory: true
+    receiptDate: Timestamp default $now;
+    
+    // Source
+    purchaseOrder: association [0,1] to PurchaseOrder;
+    vendor: association [0,1] to Vendor;
+    
+    // Destination
+    plant: association [1] to Plant;
+    warehouse: association [1] to Warehouse;
+    
+    // Documents
+    @Core.Label: 'Delivery Note Number'
+    deliveryNoteNumber: String(50);
+    
+    @Core.Label: 'Carrier'
+    carrier: String(100);
+    
+    @Core.Label: 'Vehicle Number'
+    vehicleNumber: String(50);
+    
+    status: GRNStatus default #Draft;
+    
+    receivedBy: String(100);
+    
+    remarks: String(2000);
+    
+    lines: composition [*] of GoodsReceiptLine;
+}
+
+enum ReceiptType {
+    PurchaseOrder;
+    ProductionOutput;
+    Return;
+    Transfer;
+    InitialStock;
+    Adjustment;
+}
+
+enum GRNStatus {
+    Draft;
+    Received;
+    QualityCheck;
+    PutAway;
+    Completed;
+    Cancelled;
+}
+
+entity GoodsReceiptLine {
+    key ID: UUID;
+    
+    lineNumber: Integer;
+    
+    item: association [1] to Item;
+    
+    @Core.Mandatory: true
+    @Core.Label: 'Received Quantity'
+    receivedQty: Quantity;
+    
+    @Core.Label: 'Accepted Quantity'
+    acceptedQty: Quantity;
+    
+    @Core.Label: 'Rejected Quantity'
+    rejectedQty: Quantity default 0;
+    
+    uom: UnitOfMeasure;
+    
+    // Tracking
+    batchNumber: BatchNumber;
+    serialNumber: SerialNumber;
+    manufacturingDate: Date;
+    expiryDate: Date;
+    
+    // Location
+    warehouse: association [0,1] to Warehouse;
+    zone: association [0,1] to WarehouseZone;
+    binLocation: String(50);
+    
+    // Quality
+    qualityStatus: QualityStatus default #Pending;
+    
+    // Reference
+    purchaseOrderLine: association [0,1] to PurchaseOrderLine;
+    
+    unitCost: UnitCost;
+    
+    @Core.Computed
+    totalCost: UnitCost;
+    
+    remarks: String(500);
+}

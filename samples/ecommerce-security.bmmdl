@@ -1,0 +1,94 @@
+// ============================================================
+// BMMDL Sample: Access Control (Security)
+// ============================================================
+
+namespace ECommerce;
+
+// Customer access control
+access control for Customer {
+    // All authenticated users can read
+    grant read to authenticated;
+    
+    // Only sales roles can create/update
+    grant create, update to role 'Sales', 'SalesManager';
+    
+    // Only managers can delete
+    grant delete to role 'SalesManager', 'Admin';
+    
+    // Row-level: Users can only see customers in their company
+    grant read where companyId = $companyId;
+    
+    // Sales reps can only see their assigned customers
+    grant read, update to role 'Sales'
+        where assignedSalesRep.ID = $userId;
+    
+    // Field-level restrictions
+    restrict fields {
+        creditLimit: visible when $hasFinanceRole;
+        email: masked;
+        phone: readonly when $hasSalesRole;
+    };
+}
+
+// Order access control
+access control for Order {
+    // Read access based on role
+    grant read to authenticated
+        where companyId = $companyId;
+    
+    // Create - sales and customers
+    grant create to role 'Sales', 'Customer';
+    
+    // Update - only draft orders can be updated by sales
+    grant update to role 'Sales'
+        where status = #Draft;
+    
+    // Managers can update any order
+    grant update to role 'SalesManager', 'Admin';
+    
+    // Delete - only admin and only draft orders
+    grant delete to role 'Admin'
+        where status = #Draft;
+    
+    // Field restrictions
+    restrict fields {
+        discountPercent: visible when $hasManagerRole;
+        paymentMethod: masked;
+    };
+}
+
+// Product access control
+access control for Product {
+    // Everyone can read active products
+    grant read to authenticated
+        where isActive = true;
+    
+    // Inventory team can see all
+    grant read to role 'Inventory', 'Admin';
+    
+    // Only inventory can update stock
+    grant update to role 'Inventory', 'Admin';
+    
+    // Product managers can create/update product info
+    grant create, update to role 'ProductManager';
+    
+    // Field restrictions
+    restrict fields {
+        costPrice: hidden when not $hasFinanceRole;
+        stockQuantity: readonly when not $hasInventoryRole;
+    };
+}
+
+// Employee access control
+access control for Employee {
+    // HR and Admin can manage
+    grant all to role 'HR', 'Admin';
+    
+    // Employees can read their own record
+    grant read to authenticated
+        where ID = $userId;
+    
+    // Managers can see their team
+    grant read to role 'Manager'
+        where department = $userDepartment;
+}

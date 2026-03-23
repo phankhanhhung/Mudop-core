@@ -1,0 +1,388 @@
+ <edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+   <edmx:DataServices>
+     <Schema Namespace="Default" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+       <EntityType Name="SystemConfig">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="name" Type="Edm.String" />
+         <Property Name="environment" Type="Edm.String" />
+         <Property Name="isDefault" Type="Edm.Boolean" />
+         <Property Name="status" Type="Edm.String" />
+         <Property Name="isActive" Type="Edm.Boolean" />
+         <Property Name="description" Type="Edm.String" />
+         <Property Name="version" Type="Edm.String" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+         <Property Name="updatedAt" Type="Edm.DateTimeOffset" />
+       </EntityType>
+       <EntityType Name="RolePermission">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="tenantId" Type="Edm.Guid" />
+         <Property Name="roleId" Type="Edm.Guid" />
+         <Property Name="permissionId" Type="Edm.Guid" />
+         <Property Name="assignedAt" Type="Edm.DateTimeOffset" />
+       </EntityType>
+       <EntityType Name="User">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="tenantId" Type="Edm.Guid" />
+         <Property Name="identityId" Type="Edm.Guid" />
+         <Property Name="displayName" Type="Edm.String" />
+         <Property Name="jobTitle" Type="Edm.String" />
+         <Property Name="department" Type="Edm.String" />
+         <Property Name="employeeCode" Type="Edm.String" />
+         <Property Name="status" Type="Edm.String" />
+         <Property Name="invitedById" Type="Edm.Guid" />
+         <Property Name="invitedAt" Type="Edm.DateTimeOffset" />
+         <Property Name="acceptedAt" Type="Edm.DateTimeOffset" />
+         <Property Name="leftAt" Type="Edm.DateTimeOffset" />
+         <Property Name="leftReason" Type="Edm.String" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+         <Property Name="updatedAt" Type="Edm.DateTimeOffset" />
+       </EntityType>
+       <EntityType Name="TestStorageLocation">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="code" Type="Edm.String" />
+         <Property Name="aisle" Type="Edm.String" />
+         <Property Name="rack" Type="Edm.String" />
+         <Property Name="level" Type="Edm.String" />
+         <Property Name="bin" Type="Edm.String" />
+         <Property Name="isActive" Type="Edm.Boolean" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+         <Property Name="createdBy" Type="Edm.Guid" />
+         <Property Name="modifiedAt" Type="Edm.DateTimeOffset" />
+         <Property Name="modifiedBy" Type="Edm.Guid" />
+         <Property Name="tenantId" Type="Edm.Guid" />
+         <NavigationProperty Name="zone" Type="TestStorageZone" Nullable="true" />
+       </EntityType>
+       <EntityType Name="TestProduct">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="sku" Type="Edm.String" />
+         <Property Name="name" Type="Edm.String" />
+         <Property Name="description" Type="Edm.String" />
+         <Property Name="costPrice" Type="Edm.String" />
+         <Property Name="sellingPrice" Type="Edm.String" />
+         <Property Name="profit" Type="Edm.String" />
+         <Property Name="minStockLevel" Type="Edm.Int32" />
+         <Property Name="maxStockLevel" Type="Edm.Int32" />
+         <Property Name="reorderPoint" Type="Edm.Int32" />
+         <Property Name="isActive" Type="Edm.Boolean" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+         <Property Name="createdBy" Type="Edm.Guid" />
+         <Property Name="modifiedAt" Type="Edm.DateTimeOffset" />
+         <Property Name="modifiedBy" Type="Edm.Guid" />
+         <Property Name="tenantId" Type="Edm.Guid" />
+       </EntityType>
+       <EntityType Name="TestStockLevel">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="productSku" Type="Edm.String" />
+         <Property Name="quantityOnHand" Type="Edm.Int32" />
+         <Property Name="quantityReserved" Type="Edm.Int32" />
+         <Property Name="quantityAvailable" Type="Edm.Int32" />
+         <Property Name="lotNumber" Type="Edm.String" />
+         <Property Name="expiryDate" Type="Edm.Date" />
+         <Property Name="lastMovementDate" Type="Edm.DateTimeOffset" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+         <Property Name="createdBy" Type="Edm.Guid" />
+         <Property Name="modifiedAt" Type="Edm.DateTimeOffset" />
+         <Property Name="modifiedBy" Type="Edm.Guid" />
+         <Property Name="tenantId" Type="Edm.Guid" />
+         <NavigationProperty Name="location" Type="TestStorageLocation" Nullable="true" />
+       </EntityType>
+       <EntityType Name="Role">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="tenantId" Type="Edm.Guid" />
+         <Property Name="name" Type="Edm.String" />
+         <Property Name="description" Type="Edm.String" />
+         <Property Name="isSystemRole" Type="Edm.Boolean" />
+         <Property Name="isDefault" Type="Edm.Boolean" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+         <Property Name="updatedAt" Type="Edm.DateTimeOffset" />
+       </EntityType>
+       <EntityType Name="Identity">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="email" Type="Edm.String" />
+         <Property Name="passwordHash" Type="Edm.String" />
+         <Property Name="googleId" Type="Edm.String" />
+         <Property Name="microsoftId" Type="Edm.String" />
+         <Property Name="appleId" Type="Edm.String" />
+         <Property Name="displayName" Type="Edm.String" />
+         <Property Name="avatarUrl" Type="Edm.String" />
+         <Property Name="phoneNumber" Type="Edm.String" />
+         <Property Name="locale" Type="Edm.String" />
+         <Property Name="timezone" Type="Edm.String" />
+         <Property Name="isEmailVerified" Type="Edm.Boolean" />
+         <Property Name="emailVerifiedAt" Type="Edm.DateTimeOffset" />
+         <Property Name="emailVerificationToken" Type="Edm.String" />
+         <Property Name="isMfaEnabled" Type="Edm.Boolean" />
+         <Property Name="mfaSecret" Type="Edm.String" />
+         <Property Name="mfaBackupCodes" Type="Edm.String" />
+         <Property Name="lastLoginAt" Type="Edm.DateTimeOffset" />
+         <Property Name="lastLoginIp" Type="Edm.String" />
+         <Property Name="failedLoginAttempts" Type="Edm.Int32" />
+         <Property Name="lockedUntil" Type="Edm.DateTimeOffset" />
+         <Property Name="passwordChangedAt" Type="Edm.DateTimeOffset" />
+         <Property Name="isActive" Type="Edm.Boolean" />
+         <Property Name="deactivatedAt" Type="Edm.DateTimeOffset" />
+         <Property Name="deactivatedReason" Type="Edm.String" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+         <Property Name="updatedAt" Type="Edm.DateTimeOffset" />
+       </EntityType>
+       <EntityType Name="AuditLog">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="identityId" Type="Edm.Guid" />
+         <Property Name="tenantId" Type="Edm.Guid" />
+         <Property Name="entityType" Type="Edm.String" />
+         <Property Name="entityId" Type="Edm.Guid" />
+         <Property Name="actionType" Type="Edm.String" />
+         <Property Name="oldValue" Type="Edm.String" />
+         <Property Name="newValue" Type="Edm.String" />
+         <Property Name="changes" Type="Edm.String" />
+         <Property Name="ipAddress" Type="Edm.String" />
+         <Property Name="userAgent" Type="Edm.String" />
+         <Property Name="correlationId" Type="Edm.String" />
+         <Property Name="sessionId" Type="Edm.String" />
+         <Property Name="isSuccess" Type="Edm.Boolean" />
+         <Property Name="errorMessage" Type="Edm.String" />
+         <Property Name="metadata" Type="Edm.String" />
+         <Property Name="occurredAt" Type="Edm.DateTimeOffset" />
+       </EntityType>
+       <EntityType Name="DatabaseConnection">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="name" Type="Edm.String" />
+         <Property Name="provider" Type="Edm.String" />
+         <Property Name="purpose" Type="Edm.String" />
+         <Property Name="host" Type="Edm.String" />
+         <Property Name="port" Type="Edm.Int32" />
+         <Property Name="database" Type="Edm.String" />
+         <Property Name="username" Type="Edm.String" />
+         <Property Name="password" Type="Edm.String" />
+         <Property Name="connectionString" Type="Edm.String" />
+         <Property Name="sslMode" Type="Edm.String" />
+         <Property Name="sslCertPath" Type="Edm.String" />
+         <Property Name="maxPoolSize" Type="Edm.Int32" />
+         <Property Name="minPoolSize" Type="Edm.Int32" />
+         <Property Name="connectionTimeout" Type="Edm.Int32" />
+         <Property Name="environment" Type="Edm.String" />
+         <Property Name="isActive" Type="Edm.Boolean" />
+         <Property Name="healthStatus" Type="Edm.String" />
+         <Property Name="lastHealthCheck" Type="Edm.DateTimeOffset" />
+         <Property Name="systemConfigId" Type="Edm.Guid" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+         <Property Name="updatedAt" Type="Edm.DateTimeOffset" />
+       </EntityType>
+       <EntityType Name="StorageProvider">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="name" Type="Edm.String" />
+         <Property Name="providerType" Type="Edm.String" />
+         <Property Name="description" Type="Edm.String" />
+         <Property Name="endpoint" Type="Edm.String" />
+         <Property Name="accessKey" Type="Edm.String" />
+         <Property Name="secretKey" Type="Edm.String" />
+         <Property Name="bucket" Type="Edm.String" />
+         <Property Name="region" Type="Edm.String" />
+         <Property Name="isActive" Type="Edm.Boolean" />
+         <Property Name="isDefault" Type="Edm.Boolean" />
+         <Property Name="systemConfigId" Type="Edm.Guid" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+         <Property Name="updatedAt" Type="Edm.DateTimeOffset" />
+       </EntityType>
+       <EntityType Name="TestStockReservation">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="productSku" Type="Edm.String" />
+         <Property Name="reservedQuantity" Type="Edm.Int32" />
+         <Property Name="reservedBy" Type="Edm.String" />
+         <Property Name="reservationDate" Type="Edm.DateTimeOffset" />
+         <Property Name="status" Type="Edm.String" />
+         <Property Name="notes" Type="Edm.String" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+         <Property Name="createdBy" Type="Edm.Guid" />
+         <Property Name="modifiedAt" Type="Edm.DateTimeOffset" />
+         <Property Name="modifiedBy" Type="Edm.Guid" />
+         <Property Name="tenantId" Type="Edm.Guid" />
+         <NavigationProperty Name="location" Type="TestStorageLocation" Nullable="true" />
+       </EntityType>
+       <EntityType Name="TestWarehouse">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="code" Type="Edm.String" />
+         <Property Name="name" Type="Edm.String" />
+         <Property Name="isActive" Type="Edm.Boolean" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+         <Property Name="createdBy" Type="Edm.Guid" />
+         <Property Name="modifiedAt" Type="Edm.DateTimeOffset" />
+         <Property Name="modifiedBy" Type="Edm.Guid" />
+         <Property Name="tenantId" Type="Edm.Guid" />
+       </EntityType>
+       <EntityType Name="Tenant">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="code" Type="Edm.String" />
+         <Property Name="name" Type="Edm.String" />
+         <Property Name="description" Type="Edm.String" />
+         <Property Name="ownerIdentityId" Type="Edm.Guid" />
+         <Property Name="logoUrl" Type="Edm.String" />
+         <Property Name="customDomain" Type="Edm.String" />
+         <Property Name="themeConfig" Type="Edm.String" />
+         <Property Name="subscriptionTier" Type="Edm.String" />
+         <Property Name="subscriptionExpiresAt" Type="Edm.DateTimeOffset" />
+         <Property Name="maxUsers" Type="Edm.Int32" />
+         <Property Name="maxModules" Type="Edm.Int32" />
+         <Property Name="maxStorageMB" Type="Edm.Int32" />
+         <Property Name="billingEmail" Type="Edm.String" />
+         <Property Name="billingPhone" Type="Edm.String" />
+         <Property Name="isActive" Type="Edm.Boolean" />
+         <Property Name="isSuspended" Type="Edm.Boolean" />
+         <Property Name="suspensionReason" Type="Edm.String" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+         <Property Name="updatedAt" Type="Edm.DateTimeOffset" />
+       </EntityType>
+       <EntityType Name="AuthProvider">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="name" Type="Edm.String" />
+         <Property Name="providerType" Type="Edm.String" />
+         <Property Name="description" Type="Edm.String" />
+         <Property Name="clientId" Type="Edm.String" />
+         <Property Name="clientSecret" Type="Edm.String" />
+         <Property Name="authority" Type="Edm.String" />
+         <Property Name="redirectUri" Type="Edm.String" />
+         <Property Name="scopes" Type="Edm.String" />
+         <Property Name="responseType" Type="Edm.String" />
+         <Property Name="isActive" Type="Edm.Boolean" />
+         <Property Name="isDefault" Type="Edm.Boolean" />
+         <Property Name="tenantId" Type="Edm.Guid" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+         <Property Name="updatedAt" Type="Edm.DateTimeOffset" />
+       </EntityType>
+       <EntityType Name="RefreshToken">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="identityId" Type="Edm.Guid" />
+         <Property Name="tokenHash" Type="Edm.String" />
+         <Property Name="issuedForTenantId" Type="Edm.Guid" />
+         <Property Name="deviceInfo" Type="Edm.String" />
+         <Property Name="ipAddress" Type="Edm.String" />
+         <Property Name="userAgent" Type="Edm.String" />
+         <Property Name="expiresAt" Type="Edm.DateTimeOffset" />
+         <Property Name="revokedAt" Type="Edm.DateTimeOffset" />
+         <Property Name="revokedReason" Type="Edm.String" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+       </EntityType>
+       <EntityType Name="Permission">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="name" Type="Edm.String" />
+         <Property Name="description" Type="Edm.String" />
+         <Property Name="category" Type="Edm.String" />
+         <Property Name="actionType" Type="Edm.String" />
+         <Property Name="resource" Type="Edm.String" />
+         <Property Name="isActive" Type="Edm.Boolean" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+       </EntityType>
+       <EntityType Name="TestStorageZone">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="code" Type="Edm.String" />
+         <Property Name="name" Type="Edm.String" />
+         <Property Name="zoneType" Type="Edm.String" />
+         <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+         <Property Name="createdBy" Type="Edm.Guid" />
+         <Property Name="modifiedAt" Type="Edm.DateTimeOffset" />
+         <Property Name="modifiedBy" Type="Edm.Guid" />
+         <Property Name="tenantId" Type="Edm.Guid" />
+         <NavigationProperty Name="warehouse" Type="TestWarehouse" Nullable="true" />
+       </EntityType>
+       <EntityType Name="UserRole">
+         <Key>
+           <PropertyRef Name="id" />
+         </Key>
+         <Property Name="id" Type="Edm.Guid" />
+         <Property Name="tenantId" Type="Edm.Guid" />
+         <Property Name="userId" Type="Edm.Guid" />
+         <Property Name="roleId" Type="Edm.Guid" />
+         <Property Name="assignedById" Type="Edm.Guid" />
+         <Property Name="assignedAt" Type="Edm.DateTimeOffset" />
+         <Property Name="expiresAt" Type="Edm.DateTimeOffset" />
+       </EntityType>
+       <EnumType Name="TestReservationStatus">
+         <Member Name="BMMDL.MetaModel.BmEnumValue" Value="0" />
+         <Member Name="BMMDL.MetaModel.BmEnumValue" Value="1" />
+         <Member Name="BMMDL.MetaModel.BmEnumValue" Value="2" />
+         <Member Name="BMMDL.MetaModel.BmEnumValue" Value="3" />
+       </EnumType>
+       <EnumType Name="TestZoneType">
+         <Member Name="BMMDL.MetaModel.BmEnumValue" Value="0" />
+         <Member Name="BMMDL.MetaModel.BmEnumValue" Value="1" />
+         <Member Name="BMMDL.MetaModel.BmEnumValue" Value="2" />
+         <Member Name="BMMDL.MetaModel.BmEnumValue" Value="3" />
+       </EnumType>
+       <EntityContainer Name="DefaultContainer">
+         <EntitySet Name="SystemConfig" EntityType="Default.SystemConfig" />
+         <EntitySet Name="RolePermission" EntityType="Default.RolePermission" />
+         <EntitySet Name="User" EntityType="Default.User" />
+         <EntitySet Name="TestStorageLocation" EntityType="Default.TestStorageLocation" />
+         <EntitySet Name="TestProduct" EntityType="Default.TestProduct" />
+         <EntitySet Name="TestStockLevel" EntityType="Default.TestStockLevel" />
+         <EntitySet Name="Role" EntityType="Default.Role" />
+         <EntitySet Name="Identity" EntityType="Default.Identity" />
+         <EntitySet Name="AuditLog" EntityType="Default.AuditLog" />
+         <EntitySet Name="DatabaseConnection" EntityType="Default.DatabaseConnection" />
+         <EntitySet Name="StorageProvider" EntityType="Default.StorageProvider" />
+         <EntitySet Name="TestStockReservation" EntityType="Default.TestStockReservation" />
+         <EntitySet Name="TestWarehouse" EntityType="Default.TestWarehouse" />
+         <EntitySet Name="Tenant" EntityType="Default.Tenant" />
+         <EntitySet Name="AuthProvider" EntityType="Default.AuthProvider" />
+         <EntitySet Name="RefreshToken" EntityType="Default.RefreshToken" />
+         <EntitySet Name="Permission" EntityType="Default.Permission" />
+         <EntitySet Name="TestStorageZone" EntityType="Default.TestStorageZone" />
+         <EntitySet Name="UserRole" EntityType="Default.UserRole" />
+       </EntityContainer>
+     </Schema>
+   </edmx:DataServices>
+ </edmx:Edmx>

@@ -1,0 +1,231 @@
+﻿// ============================================================
+// BMMDL First-Class Multi-Tenancy Showcase
+// Demonstrates tenant-aware module, explicit scoping, and validation
+// ============================================================
+
+module TenantShowcase version '1.0.0' {
+    author: 'BMMDL Team';
+    description: 'Showcase of first-class multi-tenancy features';
+    tenant-aware: true;  // â† All entities automatically tenant-scoped
+
+    namespace TenantShowcase {
+        // ============================================================
+        // TENANT-SCOPED ENTITIES (Inherited from module)
+        // ============================================================
+
+        /// Employee entity - automatically tenant-scoped from module
+        entity Employee : Auditable, TenantAware {
+            key ID: UUID;
+
+            employeeNumber: String(20);
+            firstName: String(100);
+            lastName: String(100);
+            email: String(255);
+
+            // Association to another tenant-scoped entity
+            department: Association to Department;
+
+            // Association to global reference data
+            nationality: Association to Country;
+
+            // Computed field
+            fullName: String computed firstName + ' ' + lastName;
+        }
+
+        /// Department entity - automatically tenant-scoped
+        entity Department : Auditable, TenantAware {
+            key ID: UUID;
+
+            deptCode: String(10);
+            deptName: String(100);
+
+            manager: Association to Employee;
+            employees: Composition of Employee;
+        }
+
+        /// Order entity - explicitly tenant-scoped with annotation
+        @TenantScoped
+        @Description: 'Sales order entity with explicit tenant-scoping'
+        entity Order : Auditable, TenantAware {
+            key ID: UUID;
+
+            orderNumber: String(20);
+            orderDate: Date default $today;
+
+            customer: Association to Employee;  // For demo purposes
+            items: Composition of OrderItem;
+
+            // Computed fields
+            subtotal: Decimal computed sum(items.lineTotal) stored;
+            totalAmount: Decimal computed subtotal * 1.1;  // With tax
+        }
+
+        entity OrderItem {
+            key ID: UUID;
+
+            product: String(200);
+            quantity: Integer;
+            unitPrice: Decimal(15, 2);
+            lineTotal: Decimal computed quantity * unitPrice stored;
+        }
+
+        // ============================================================
+        // GLOBAL ENTITIES (Opt-out with @GlobalScoped)
+        // ============================================================
+
+        /// Country - Reference data, shared across all tenants
+        @GlobalScoped
+        @Description: 'Global reference data for countries'
+        entity Country {
+            key Code: String(3);
+
+            name: String(100);
+            continent: String(50);
+            population: Integer;
+        }
+
+        /// Currency - Another global reference entity
+        @GlobalScoped
+        entity Currency {
+            key Code: String(3);
+
+            name: String(50);
+            symbol: String(5);
+            decimalPlaces: Integer default 2;
+        }
+
+        // ============================================================
+        // ASPECTS (for reusability)
+        // ============================================================
+
+        aspect Auditable {
+            createdAt: Timestamp default $now;
+            createdBy: String(100);
+            updatedAt: Timestamp;
+            updatedBy: String(100);
+        }
+
+        aspect TenantAware {
+            @Core.Immutable
+            tenantId: UUID;
+        }
+
+        // ============================================================
+        // ACCESS CONTROL with SCOPE LEVELS
+        // ============================================================
+
+        /// Employee access control with different scope levels
+        access control for Employee {
+            // Employees can only read their tenant's employees
+            grant READ to role 'Employee' at TENANT scope;
+
+            // HR can modify employees within their company (multi-company tenant)
+            grant UPDATE to role 'HR' at COMPANY scope
+                where department.deptName = 'Human Resources';
+
+            // System admins can access employees across all tenants
+            grant ALL to role 'SystemAdmin' at GLOBAL scope;
+
+            // Field-level restrictions
+            restrict fields {
+                email: visible when $currentUser.role = 'HR';
+                employeeNumber: readonly when true;
+            };
+        }
+
+        /// Order access control
+        access control for Order {
+            grant READ to role 'Sales' at TENANT scope;
+            grant CREATE, UPDATE to role 'SalesManager' at COMPANY scope;
+            grant ALL to role 'Admin' at GLOBAL scope;
+        }
+
+        /// Country access control (global entity)
+        access control for Country {
+            // Everyone can read global reference data
+            grant READ to role 'Authenticated' at GLOBAL scope;
+
+            // Only global admins can modify
+            grant WRITE to role 'GlobalAdmin' at GLOBAL scope;
+
+            // Tenant users cannot modify
+            deny ALL to role 'User' at TENANT scope;
+        }
+
+        // ============================================================
+        // BUSINESS RULES
+        // ============================================================
+
+        rule EmployeeValidation for Employee {
+            on before CREATE, UPDATE {
+                validate email != null and email != ''
+                    message 'Email is required';
+
+                validate length(firstName) >= 2
+                    message 'First name must be at least 2 characters';
+            }
+        }
+
+        rule OrderValidation for Order {
+            on before CREATE, UPDATE {
+                validate totalAmount > 0
+                    message 'Order total must be positive';
+
+                validate count(items) >= 1
+                    message 'Order must have at least one item';
+            }
+        }
+
+        // ============================================================
+        // SEQUENCES with TENANT SCOPE
+        // ============================================================
+
+        sequence EmployeeNumberSequence for Employee.employeeNumber {
+            pattern: 'EMP-{YYYY}-{####}';
+            start: 1;
+            increment: 1;
+            padding: 4;
+            scope: TENANT;  // â† Reset per tenant
+            reset on: YEARLY;
+        }
+
+        sequence OrderNumberSequence for Order.orderNumber {
+            pattern: 'ORD-{COMPANY}-{####}';
+            scope: COMPANY;  // â† Reset per company (within tenant)
+            reset on: MONTHLY;
+        }
+
+        // ============================================================
+        // SERVICES
+        // ============================================================
+
+        service EmployeeService {
+            entity Employee;
+
+            action PromoteEmployee(employeeId: UUID, newDepartment: UUID)
+                returns Boolean;
+
+            function GetEmployeesByDepartment(deptId: UUID)
+                returns array<Employee>;
+        }
+
+        // ============================================================
+        // EVENTS (Domain Events)
+        // ============================================================
+
+        event EmployeeHired {
+            employeeId: UUID;
+            hireDate: Date;
+            departmentId: UUID;
+            tenantId: UUID;  // Explicit tenant tracking in events
+        }
+
+        event OrderPlaced {
+            orderId: UUID;
+            customerId: UUID;
+            orderAmount: Decimal;
+            tenantId: UUID;
+        }
+
+    }
+}

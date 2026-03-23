@@ -1,0 +1,91 @@
+// ============================================================
+// BMMDL Sample: Common Types and Aspects
+// ============================================================
+
+// Shared types and aspects - no namespace so they are globally available
+
+// Reusable types
+type Amount : Decimal(15, 2);
+type Code : String(50);
+type Email : String(255);
+type Name : String(100);
+type Phone : String(20);
+type Address : String(500);
+type Contact : String(255);
+type ShortCode : String(20);
+type Quantity : Decimal(15, 4);
+type Percentage : Decimal(5, 2);
+type Description : String(2000);
+
+// Gender enum
+enum Gender {
+    Male = 1;
+    Female = 2;
+    Other = 3;
+}
+
+// Enum for status
+enum Status {
+    @Core.Label: 'Draft'
+    Draft = 0;
+    
+    @Core.Label: 'Active'
+    Active = 1;
+    
+    @Core.Label: 'Inactive'
+    Inactive = 2;
+    
+    @Core.Label: 'Deleted'
+    Deleted = 99;
+}
+
+// Common aspect for audit fields
+aspect Auditable {
+    @Core.Computed
+    createdAt: Timestamp;
+    
+    @Core.Computed
+    createdBy: String(100);
+    
+    @Core.Computed
+    modifiedAt: Timestamp;
+    
+    @Core.Computed
+    modifiedBy: String(100);
+
+    rule AutoAuditCreate on before create {
+        compute createdAt = $now;
+        compute createdBy = $user.name;
+        compute modifiedAt = $now;
+        compute modifiedBy = $user.name;
+    }
+
+    rule AutoAuditUpdate on before update {
+        compute modifiedAt = $now;
+        compute modifiedBy = $user.name;
+    }
+}
+
+// Aspect for soft delete
+aspect SoftDeletable {
+    @Core.Computed
+    isDeleted: Boolean default false;
+    
+    @Core.Computed
+    deletedAt: Timestamp;
+    
+    @Core.Computed
+    deletedBy: String(100);
+}
+
+// Aspect for multi-tenant
+aspect TenantAware {
+    @Tenant.Column
+    tenantId: UUID;
+}
+
+// Aspect for multi-company
+aspect CompanyAware {
+    @Company.Column
+    companyId: UUID;
+}

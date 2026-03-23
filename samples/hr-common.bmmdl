@@ -1,0 +1,135 @@
+// ============================================================
+// BMMDL Sample: HR - Common Types and Enums
+// Domain: Human Resources
+// ============================================================
+
+namespace HR;
+
+// ============================================================
+// ENUMERATIONS
+// ============================================================
+
+enum EmploymentStatus {
+    Active;
+    OnLeave;
+    Suspended;
+    Terminated;
+    Retired;
+}
+
+enum EmploymentType {
+    FullTime;
+    PartTime;
+    Contract;
+    Intern;
+    Consultant;
+}
+
+enum Gender {
+    Male;
+    Female;
+    Other;
+    PreferNotToSay;
+}
+
+enum MaritalStatus {
+    Single;
+    Married;
+    Divorced;
+    Widowed;
+}
+
+enum LeaveType {
+    Annual;
+    Sick;
+    Maternity;
+    Paternity;
+    Unpaid;
+    Compassionate;
+    Study;
+    Sabbatical;
+}
+
+enum LeaveStatus {
+    Pending;
+    Approved;
+    Rejected;
+    Cancelled;
+    Taken;
+}
+
+enum PerformanceRating {
+    Exceptional = 5;
+    ExceedsExpectations = 4;
+    MeetsExpectations = 3;
+    NeedsImprovement = 2;
+    Unsatisfactory = 1;
+}
+
+enum TrainingStatus {
+    Scheduled;
+    InProgress;
+    Completed;
+    Cancelled;
+    Failed;
+}
+
+// ============================================================
+// CUSTOM TYPES
+// ============================================================
+
+type EmployeeCode : String(10);
+type Phone : String(20);
+type Email : String(100);
+type NationalID : String(20);
+type TaxID : String(20);
+type BankAccount : String(30);
+
+type Salary : Decimal(15, 2);
+type Hours : Decimal(5, 2);
+type Percentage : Decimal(5, 2);
+type Rating : Integer;
+
+type Address : {
+    street: String(200);
+    city: String(100);
+    state: String(100);
+    country: String(100);
+    postalCode: String(20);
+};
+
+type EmergencyContact : {
+    name: String(100);
+    relationship: String(50);
+    phone: Phone;
+    email: Email;
+};
+
+// ============================================================
+// ASPECTS
+// ============================================================
+
+aspect Auditable {
+    createdAt: DateTime default $now;
+    createdBy: UUID;
+    modifiedAt: DateTime default $now;
+    modifiedBy: UUID;
+}
+
+aspect TenantAware {
+    tenantId: UUID;
+}
+
+aspect CompanyAware {
+    companyId: UUID;
+}
+
+aspect SoftDeletable {
+    isDeleted: Boolean default false;
+    deletedAt: DateTime;
+    deletedBy: UUID;
+}
+
+aspect Versioned {
+    version: Integer default 1;
+}

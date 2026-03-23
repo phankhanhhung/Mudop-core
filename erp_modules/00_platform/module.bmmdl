@@ -1,0 +1,306 @@
+﻿/**
+ * Platform Module (Module 0) - Version 2.0.0
+ * 
+ * This is the foundational module that provides infrastructure:
+ * - Identity (authentication users)
+ * - Tenant management (multi-tenancy)
+ * - Permission templates
+ * - System configuration
+ */
+
+module Platform version '2.0.0' {
+    author: 'Mudop Team';
+    description: 'Infrastructure - authentication, tenants, permissions';
+
+    namespace platform {
+        // ============================================================
+        // IDENTITY - Authentication (Platform-scoped)
+        // Represents a person who can log in to the system
+        // ============================================================
+
+        @system
+        entity Identity {
+            key id: UUID;
+
+            // === Authentication ===
+            email: String(255);
+            passwordHash: String(500);
+
+            // === OAuth Providers ===
+            googleId: String(255);
+            microsoftId: String(255);
+            appleId: String(255);
+
+            // === Profile (platform-level) ===
+            displayName: String(200);
+            avatarUrl: String(500);
+            phoneNumber: String(20);
+            locale: String(10) default 'en';
+            timezone: String(50) default 'UTC';
+
+            // === Email Verification ===
+            isEmailVerified: Boolean default false;
+            emailVerifiedAt: Timestamp;
+            emailVerificationToken: String(100);
+
+            // === MFA ===
+            isMfaEnabled: Boolean default false;
+            mfaSecret: String(500);
+            mfaBackupCodes: String;
+
+            // === Security ===
+            lastLoginAt: Timestamp;
+            lastLoginIp: String(45);
+            failedLoginAttempts: Integer default 0;
+            lockedUntil: Timestamp;
+            passwordChangedAt: Timestamp;
+
+            // === Status ===
+            isActive: Boolean default true;
+            deactivatedAt: Timestamp;
+            deactivatedReason: String(500);
+
+            // === Timestamps ===
+            createdAt: Timestamp default $now;
+            updatedAt: Timestamp;
+
+            constraint UniqueEmail unique (email);
+            constraint UniqueGoogleId unique (googleId);
+        }
+
+        // ============================================================
+        // TENANT MANAGEMENT (Platform-scoped)
+        // ============================================================
+
+        @system
+        entity Tenant {
+            key id: UUID;
+
+            code: String(50);
+            name: String(200);
+            description: String(1000);
+
+            // Owner - Identity who created this tenant
+            ownerIdentityId: UUID;
+
+            // Branding
+            logoUrl: String(500);
+            customDomain: String(255);
+            themeConfig: String;
+
+            // Subscription
+            subscriptionTier: String(50) default 'free';
+            subscriptionExpiresAt: Timestamp;
+            maxUsers: Integer default 10;
+            maxModules: Integer default 5;
+            maxStorageMB: Integer default 1000;
+
+            // Contact
+            billingEmail: String(255);
+            billingPhone: String(20);
+
+            // Status
+            isActive: Boolean default true;
+            isSuspended: Boolean default false;
+            suspensionReason: String(500);
+
+            createdAt: Timestamp default $now;
+            updatedAt: Timestamp;
+
+            constraint UniqueCode unique (code);
+        }
+
+        // ============================================================
+        // PERMISSION TEMPLATES (Platform-scoped)
+        // These are permission definitions, not assignments
+        // ============================================================
+
+        @system
+        entity Permission {
+            key id: UUID;
+
+            name: String(100);
+            description: String(500);
+
+            category: String(50);
+            actionType: String(50);
+            resource: String(100);
+
+            isActive: Boolean default true;
+
+            createdAt: Timestamp default $now;
+        }
+
+        // ============================================================
+        // REFRESH TOKEN (Platform-scoped)
+        // ============================================================
+
+        @system
+        entity RefreshToken {
+            key id: UUID;
+
+            identityId: UUID;
+            tokenHash: String(500);
+
+            // Context when issued
+            issuedForTenantId: UUID;
+
+            deviceInfo: String(500);
+            ipAddress: String(45);
+            userAgent: String(500);
+
+            expiresAt: Timestamp;
+            revokedAt: Timestamp;
+            revokedReason: String(200);
+
+            createdAt: Timestamp default $now;
+        }
+
+        // ============================================================
+        // AUDIT LOG (Platform-scoped)
+        // ============================================================
+
+        @system
+        entity AuditLog {
+            key id: UUID;
+
+            identityId: UUID;
+            tenantId: UUID;
+
+            entityType: String(100);
+            entityId: UUID;
+            actionType: String(50);
+
+            oldValue: String;
+            newValue: String;
+            changes: String;
+
+            ipAddress: String(45);
+            userAgent: String(500);
+
+            correlationId: String(100);
+            sessionId: String(100);
+
+            isSuccess: Boolean default true;
+            errorMessage: String(1000);
+
+            metadata: String;
+
+            occurredAt: Timestamp default $now;
+        }
+
+        // ============================================================
+        // SYSTEM CONFIGURATION (Platform-scoped)
+        // ============================================================
+
+        @system
+        entity SystemConfig {
+            key id: UUID;
+
+            name: String(100);
+            environment: String(50) default 'production';
+            isDefault: Boolean default false;
+
+            status: String(50) default 'active';
+            isActive: Boolean default true;
+
+            description: String(500);
+            version: String(20) default '1.0.0';
+
+            createdAt: Timestamp default $now;
+            updatedAt: Timestamp;
+        }
+
+        @system
+        entity DatabaseConnection {
+            key id: UUID;
+
+            name: String(100);
+            provider: String(50) default 'postgresql';
+            purpose: String(100);
+
+            host: String(255);
+            port: Integer default 5432;
+            database: String(100);
+            username: String(100);
+            password: String(500);
+            connectionString: String(1000);
+
+            sslMode: String(50) default 'prefer';
+            sslCertPath: String(500);
+
+            maxPoolSize: Integer default 20;
+            minPoolSize: Integer default 5;
+            connectionTimeout: Integer default 30;
+
+            environment: String(50) default 'production';
+            isActive: Boolean default true;
+            healthStatus: String(50) default 'unknown';
+            lastHealthCheck: Timestamp;
+
+            systemConfigId: UUID;
+
+            createdAt: Timestamp default $now;
+            updatedAt: Timestamp;
+        }
+
+        // ============================================================
+        // STORAGE PROVIDERS (Platform-scoped)
+        // ============================================================
+
+        @system
+        entity StorageProvider {
+            key id: UUID;
+
+            name: String(100);
+            providerType: String(50);
+            description: String(500);
+
+            endpoint: String(500);
+            accessKey: String(500);
+            secretKey: String(500);
+            bucket: String(100);
+            region: String(50);
+
+            isActive: Boolean default true;
+            isDefault: Boolean default false;
+
+            systemConfigId: UUID;
+
+            createdAt: Timestamp default $now;
+            updatedAt: Timestamp;
+        }
+
+        // ============================================================
+        // AUTH PROVIDERS (Platform-scoped)
+        // OAuth configuration for third-party authentication
+        // ============================================================
+
+        @system
+        entity AuthProvider {
+            key id: UUID;
+
+            name: String(100);
+            providerType: String(50);
+            description: String(500);
+
+            clientId: String(500);
+            clientSecret: String(500);
+            authority: String(500);
+            redirectUri: String(500);
+
+            scopes: String(500);
+            responseType: String(50) default 'code';
+
+            isActive: Boolean default true;
+            isDefault: Boolean default false;
+
+            // Can be tenant-specific OAuth config
+            tenantId: UUID;
+
+            createdAt: Timestamp default $now;
+            updatedAt: Timestamp;
+        }
+
+    }
+}

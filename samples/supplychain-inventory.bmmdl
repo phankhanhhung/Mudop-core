@@ -1,0 +1,344 @@
+// ============================================================
+// BMMDL Sample: Supply Chain - Inventory Management
+// ============================================================
+
+namespace SupplyChain;
+
+using Common;
+using Manufacturing;
+
+// ============================================================
+// INVENTORY BALANCE
+// ============================================================
+
+@Core.Description: 'Current Inventory Balance'
+entity InventoryBalance : Auditable {
+    key ID: UUID;
+    
+    item: association [1] to Item;
+    warehouse: association [1] to Warehouse;
+    zone: association [0,1] to WarehouseZone;
+    binLocation: String(50);
+    
+    // Tracking
+    batchNumber: BatchNumber;
+    serialNumber: SerialNumber;
+    
+    // Quantities
+    @Core.Label: 'On Hand Quantity'
+    onHandQty: Quantity default 0;
+    
+    @Core.Label: 'Reserved Quantity'
+    reservedQty: Quantity default 0;
+    
+    @Core.Label: 'Allocated Quantity'
+    allocatedQty: Quantity default 0;
+    
+    @Core.Computed
+    @Core.Label: 'Available Quantity'
+    availableQty: Quantity;
+    
+    @Core.Label: 'In Transit Quantity'
+    inTransitQty: Quantity default 0;
+    
+    @Core.Label: 'Quarantine Quantity'
+    quarantineQty: Quantity default 0;
+    
+    uom: UnitOfMeasure;
+    
+    // Costing
+    unitCost: UnitCost;
+    
+    @Core.Computed
+    totalValue: UnitCost;
+    
+    // Dates
+    manufacturingDate: Date;
+    expiryDate: Date;
+    lastMovementDate: Timestamp;
+    
+    qualityStatus: QualityStatus default #Released;
+}
+
+// ============================================================
+// INVENTORY TRANSACTION
+// ============================================================
+
+@Core.Description: 'Inventory Transaction History'
+@Core.Immutable: true
+entity InventoryTransaction : Auditable {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Sequence.Pattern: 'INV-{year}{month}{day}-{seq:7}'
+    transactionNumber: String(50);
+    
+    @Core.Mandatory: true
+    transactionDate: Timestamp default $now;
+    
+    transactionType: InventoryTransactionType;
+    
+    item: association [1] to Item;
+    
+    // Quantity
+    @Core.Mandatory: true
+    quantity: Quantity;
+    
+    uom: UnitOfMeasure;
+    
+    // From Location
+    fromWarehouse: association [0,1] to Warehouse;
+    fromZone: association [0,1] to WarehouseZone;
+    fromBin: String(50);
+    
+    // To Location
+    toWarehouse: association [0,1] to Warehouse;
+    toZone: association [0,1] to WarehouseZone;
+    toBin: String(50);
+    
+    // Tracking
+    batchNumber: BatchNumber;
+    serialNumber: SerialNumber;
+    
+    // Costing
+    unitCost: UnitCost;
+    totalCost: UnitCost;
+    
+    // Reference Documents
+    referenceType: String(50);
+    referenceNumber: String(50);
+    referenceLineId: UUID;
+    
+    // User
+    processedBy: String(100);
+    
+    remarks: String(500);
+}
+
+enum InventoryTransactionType {
+    @Core.Label: 'Goods Receipt'
+    Receipt;
+    @Core.Label: 'Goods Issue'
+    Issue;
+    @Core.Label: 'Transfer'
+    Transfer;
+    @Core.Label: 'Adjustment - Positive'
+    AdjustmentPlus;
+    @Core.Label: 'Adjustment - Negative'
+    AdjustmentMinus;
+    @Core.Label: 'Production Output'
+    ProductionOutput;
+    @Core.Label: 'Production Consumption'
+    ProductionConsumption;
+    @Core.Label: 'Sales Shipment'
+    SalesShipment;
+    @Core.Label: 'Sales Return'
+    SalesReturn;
+    @Core.Label: 'Purchase Return'
+    PurchaseReturn;
+    @Core.Label: 'Scrap'
+    Scrap;
+    @Core.Label: 'Quality Hold'
+    QualityHold;
+    @Core.Label: 'Quality Release'
+    QualityRelease;
+}
+
+// ============================================================
+// STOCK TRANSFER
+// ============================================================
+
+@Core.Description: 'Stock Transfer Order'
+@Tenant.Aware: true
+@Company.Aware: true
+entity StockTransfer : Auditable {
+    key ID: UUID;
+    
+    @Sequence.Pattern: 'STO-{company}-{year}{month}-{seq:5}'
+    @Sequence.Scope: #Company
+    transferNumber: String(50);
+    
+    transferType: TransferType;
+    
+    @Core.Mandatory: true
+    transferDate: Date default $today;
+    
+    // From
+    fromPlant: association [1] to Plant;
+    fromWarehouse: association [1] to Warehouse;
+    
+    // To
+    toPlant: association [1] to Plant;
+    toWarehouse: association [1] to Warehouse;
+    
+    // Shipping
+    carrier: String(100);
+    vehicleNumber: String(50);
+    shipDate: Date;
+    expectedArrival: Date;
+    actualArrival: Date;
+    
+    status: TransferStatus default #Draft;
+    
+    requestedBy: String(100);
+    approvedBy: String(100);
+    
+    remarks: String(2000);
+    
+    lines: composition [*] of StockTransferLine;
+}
+
+enum TransferType {
+    InterWarehouse;
+    InterPlant;
+    ZoneTransfer;
+    BinTransfer;
+}
+
+enum TransferStatus {
+    Draft;
+    Approved;
+    Picked;
+    InTransit;
+    Received;
+    Completed;
+    Cancelled;
+}
+
+entity StockTransferLine {
+    key ID: UUID;
+    
+    lineNumber: Integer;
+    
+    item: association [1] to Item;
+    
+    @Core.Mandatory: true
+    transferQty: Quantity;
+    
+    pickedQty: Quantity default 0;
+    receivedQty: Quantity default 0;
+    
+    uom: UnitOfMeasure;
+    
+    // Tracking
+    batchNumber: BatchNumber;
+    serialNumber: SerialNumber;
+    
+    // From Location
+    fromZone: association [0,1] to WarehouseZone;
+    fromBin: String(50);
+    
+    // To Location
+    toZone: association [0,1] to WarehouseZone;
+    toBin: String(50);
+    
+    status: TransferLineStatus default #Pending;
+    
+    remarks: String(500);
+}
+
+enum TransferLineStatus {
+    Pending;
+    PartiallyPicked;
+    Picked;
+    InTransit;
+    PartiallyReceived;
+    Received;
+    Cancelled;
+}
+
+// ============================================================
+// STOCK COUNT / PHYSICAL INVENTORY
+// ============================================================
+
+@Core.Description: 'Physical Inventory Count'
+@Tenant.Aware: true
+entity StockCount : Auditable {
+    key ID: UUID;
+    
+    @Sequence.Pattern: 'CNT-{year}{month}-{seq:4}'
+    countNumber: String(50);
+    
+    countType: CountType;
+    
+    @Core.Mandatory: true
+    countDate: Date;
+    
+    warehouse: association [1] to Warehouse;
+    zone: association [0,1] to WarehouseZone;
+    
+    // Filter criteria
+    itemCategory: association [0,1] to ItemCategory;
+    
+    status: CountStatus default #Created;
+    
+    createdBy: String(100);
+    countedBy: String(100);
+    approvedBy: String(100);
+    
+    remarks: String(2000);
+    
+    lines: composition [*] of StockCountLine;
+}
+
+enum CountType {
+    FullCount;
+    CycleCount;
+    SpotCheck;
+    AnnualCount;
+}
+
+enum CountStatus {
+    Created;
+    InProgress;
+    Counted;
+    Approved;
+    Posted;
+    Cancelled;
+}
+
+entity StockCountLine {
+    key ID: UUID;
+    
+    item: association [1] to Item;
+    
+    batchNumber: BatchNumber;
+    binLocation: String(50);
+    
+    // System Quantity
+    @Core.Label: 'System Quantity'
+    systemQty: Quantity;
+    
+    // Counted
+    @Core.Label: 'Counted Quantity'
+    countedQty: Quantity;
+    
+    // Variance
+    @Core.Computed
+    @Core.Label: 'Variance Quantity'
+    varianceQty: Quantity;
+    
+    @Core.Computed
+    @Core.Label: 'Variance %'
+    variancePercent: Decimal(8, 2);
+    
+    uom: UnitOfMeasure;
+    
+    // Cost
+    unitCost: UnitCost;
+    
+    @Core.Computed
+    varianceValue: UnitCost;
+    
+    countStatus: LineCountStatus default #Pending;
+    
+    remarks: String(500);
+}
+
+enum LineCountStatus {
+    Pending;
+    Counted;
+    Recounted;
+    Approved;
+    Adjusted;
+}

@@ -1,0 +1,10 @@
+{
+  "name": "BMMDL.Plugin.ETag",
+  "version": "1.0.0",
+  "description": "ETag-based optimistic concurrency for entity operations",
+  "author": "BMMDL Team",
+  "entryAssembly": "BMMDL.Plugin.ETag.dll",
+  "dependencies": [],
+  "bmmdlModules": [],
+  "autoLoad": true
+}

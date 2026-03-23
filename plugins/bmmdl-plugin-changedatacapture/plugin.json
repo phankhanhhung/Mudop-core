@@ -1,0 +1,10 @@
+{
+  "name": "BMMDL.Plugin.ChangeDataCapture",
+  "version": "1.0.0",
+  "description": "CDC — captures INSERT/UPDATE/DELETE into companion _cdc table",
+  "author": "BMMDL Team",
+  "entryAssembly": "BMMDL.Plugin.ChangeDataCapture.dll",
+  "dependencies": [],
+  "bmmdlModules": [],
+  "autoLoad": true
+}

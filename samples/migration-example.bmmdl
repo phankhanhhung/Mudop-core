@@ -1,0 +1,80 @@
+// ============================================================
+// BMMDL Sample: Migration Definition
+// Demonstrates Migrations DSL syntax
+// ============================================================
+
+namespace Migrations;
+
+// Migration to add email field and rename customer name
+migration 'AddCustomerEmail' {
+    version: '1.1.0';
+    author: 'developer@example.com';
+    description: 'Add email field and rename name to fullName';
+    breaking: false;
+    
+    up {
+        alter entity Customer {
+            add Email: String(255);
+            rename column Name to FullName;
+            alter column Status type String(50);
+        }
+        
+        transform Customer {
+            set FullName = Name;
+        }
+    }
+    
+    down {
+        alter entity Customer {
+            drop column Email;
+            rename column FullName to Name;
+            alter column Status type String(20);
+        }
+    }
+}
+
+// Migration to add new entity
+migration 'AddOrderHistory' {
+    version: '1.2.0';
+    author: 'developer@example.com';
+    description: 'Add OrderHistory entity for audit tracking';
+    breaking: false;
+    depends: 'AddCustomerEmail';
+    
+    up {
+        add entity OrderHistory {
+            key ID: UUID;
+            OrderId: UUID;
+            Action: String(50);
+            OldValue: String(2000);
+            NewValue: String(2000);
+            ChangedAt: DateTime;
+            ChangedBy: UUID;
+        }
+    }
+    
+    down {
+        drop entity OrderHistory;
+    }
+}
+
+// Breaking migration - removes field
+migration 'RemoveObsoleteField' {
+    version: '2.0.0';
+    author: 'developer@example.com';
+    description: 'Remove obsolete LegacyCode field';
+    breaking: true;
+    depends: 'AddOrderHistory';
+    
+    up {
+        alter entity Customer {
+            drop column LegacyCode;
+        }
+    }
+    
+    down {
+        alter entity Customer {
+            add LegacyCode: String(50);
+        }
+    }
+}

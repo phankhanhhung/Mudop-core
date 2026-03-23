@@ -1,0 +1,10 @@
+{
+  "name": "BMMDL.Plugin.Identity.Api",
+  "version": "1.0.0",
+  "description": "Platform identity API — auth endpoints, user service DI registration",
+  "author": "BMMDL Team",
+  "entryAssembly": "BMMDL.Plugin.Identity.Api.dll",
+  "dependencies": ["BMMDL.Plugin.Identity"],
+  "bmmdlModules": [],
+  "autoLoad": true
+}

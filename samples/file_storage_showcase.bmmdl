@@ -1,0 +1,325 @@
+// ============================================
+// BMMDL File Storage Showcase
+// ============================================
+// Demonstrates FileReference type for external file storage
+// with S3, MinIO, and other storage providers.
+//
+// FileReference fields expand to 8 metadata columns:
+// - {field}_provider (VARCHAR(50))
+// - {field}_bucket (VARCHAR(255))
+// - {field}_key (VARCHAR(1024))
+// - {field}_size (BIGINT)
+// - {field}_mime_type (VARCHAR(100))
+// - {field}_checksum (VARCHAR(64))
+// - {field}_uploaded_at (TIMESTAMPTZ)
+// - {field}_uploaded_by (UUID)
+// ============================================
+
+namespace DocumentManagement;
+
+// ============================================
+// Document Entity with Large File Storage
+// ============================================
+
+entity Document {
+    key ID: UUID;
+    name: String(255);
+    description: String(2000)?;
+
+    // Large file stored in S3 with storage config
+    @Storage.Provider: 'S3'
+    @Storage.Bucket: 'company-documents'
+    @Storage.MaxSize: 52428800  // 50MB limit
+    @Storage.AllowedTypes: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+    content: FileReference;
+
+    // Small thumbnail stored directly in database (legacy Binary type)
+    thumbnail: Binary(500000)?;  // 500KB
+
+    // Document metadata
+    category: String(100);
+    tags: String(500)?;
+    version: Integer;
+    status: String(20);  // 'draft', 'published', 'archived'
+
+    // Audit fields
+    createdBy: UUID;
+    createdAt: Timestamp;
+    modifiedBy: UUID?;
+    modifiedAt: Timestamp?;
+}
+
+// ============================================
+// Product Entity with Multiple Images
+// ============================================
+
+entity Product {
+    key ID: UUID;
+    sku: String(50);
+    name: String(200);
+    description: String(5000)?;
+    price: Decimal(10, 2);
+    currency: String(3);
+    stockQuantity: Integer;
+
+    // Main product image in S3
+    @Storage.Provider: 'S3'
+    @Storage.Bucket: 'product-images'
+    @Storage.MaxSize: 5242880  // 5MB
+    @Storage.AllowedTypes: ['image/jpeg', 'image/png', 'image/webp']
+    mainImage: FileReference;
+
+    // Optional product manual in MinIO
+    @Storage.Provider: 'MinIO'
+    @Storage.Bucket: 'product-manuals'
+    @Storage.MaxSize: 104857600  // 100MB
+    @Storage.AllowedTypes: ['application/pdf']
+    manual: FileReference?;
+
+    // Metadata
+    createdAt: Timestamp;
+    updatedAt: Timestamp?;
+}
+
+// ============================================
+// Media Asset Entity with Various File Types
+// ============================================
+
+entity MediaAsset {
+    key ID: UUID;
+    name: String(255);
+    assetType: String(50);  // 'image', 'video', 'audio', 'document'
+
+    // General purpose file storage
+    @Storage.Provider: 'S3'
+    @Storage.Bucket: 'media-assets'
+    @Storage.MaxSize: 524288000  // 500MB for video/audio
+    @Storage.AllowedTypes: [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'video/mp4', 'video/webm',
+        'audio/mp3', 'audio/wav', 'audio/ogg',
+        'application/pdf'
+    ]
+    file: FileReference;
+
+    // Computed field: file size in megabytes
+    fileSizeMB: Decimal(10, 2) computed file.size / 1048576.0 stored;
+
+    // Metadata
+    uploadedBy: UUID;
+    uploadedAt: Timestamp;
+    accessCount: Integer;
+    lastAccessedAt: Timestamp?;
+}
+
+// ============================================
+// Employee Entity with Profile Photo
+// ============================================
+
+entity Employee {
+    key ID: UUID;
+    employeeNumber: String(20);
+    firstName: String(100);
+    lastName: String(100);
+    email: String(255);
+    department: String(100);
+
+    // Profile photo
+    @Storage.Provider: 'S3'
+    @Storage.Bucket: 'employee-photos'
+    @Storage.MaxSize: 2097152  // 2MB
+    @Storage.AllowedTypes: ['image/jpeg', 'image/png']
+    profilePhoto: FileReference?;
+
+    // Resume/CV
+    @Storage.Provider: 'S3'
+    @Storage.Bucket: 'employee-documents'
+    @Storage.MaxSize: 10485760  // 10MB
+    @Storage.AllowedTypes: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+    resume: FileReference?;
+
+    // Metadata
+    hireDate: Date;
+    status: String(20);
+    createdAt: Timestamp;
+    updatedAt: Timestamp?;
+}
+
+// ============================================
+// Invoice Entity with Attachments
+// ============================================
+
+entity Invoice {
+    key ID: UUID;
+    invoiceNumber: String(50);
+    customerName: String(200);
+    totalAmount: Decimal(15, 2);
+    currency: String(3);
+    issueDate: Date;
+    dueDate: Date;
+    status: String(20);  // 'draft', 'sent', 'paid', 'overdue', 'cancelled'
+
+    // Invoice PDF
+    @Storage.Provider: 'S3'
+    @Storage.Bucket: 'invoices'
+    @Storage.MaxSize: 10485760  // 10MB
+    @Storage.AllowedTypes: ['application/pdf']
+    invoicePdf: FileReference?;
+
+    // Supporting documents
+    @Storage.Provider: 'S3'
+    @Storage.Bucket: 'invoice-attachments'
+    @Storage.MaxSize: 20971520  // 20MB
+    @Storage.AllowedTypes: ['application/pdf', 'image/jpeg', 'image/png']
+    attachment: FileReference?;
+
+    createdAt: Timestamp;
+    updatedAt: Timestamp?;
+}
+
+// ============================================
+// Access Control for Documents
+// ============================================
+
+access control for Document {
+    // Users can read their own tenant's documents
+    grant READ to role 'User' at TENANT scope;
+
+    // Managers can create/update documents in their tenant
+    grant CREATE, UPDATE to role 'Manager' at TENANT scope;
+
+    // Admins have full access globally
+    grant ALL to role 'Admin' at GLOBAL scope;
+}
+
+access control for Product {
+    // All authenticated users can view products
+    grant READ to role 'User', 'Manager', 'Admin';
+
+    // Only managers and admins can modify products
+    grant CREATE, UPDATE to role 'Manager', 'Admin';
+
+    // Only admins can delete products
+    grant DELETE to role 'Admin';
+}
+
+// ============================================
+// Business Rules for File Validation
+// ============================================
+
+rule DocumentFileValidation for Document {
+    on before CREATE, UPDATE {
+        // Validate file size doesn't exceed 50MB
+        validate content.size <= 52428800
+            message 'Document file size exceeds 50MB limit'
+            severity ERROR;
+
+        // Validate MIME type
+        validate content.mime_type in ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+            message 'Invalid document file type. Only PDF and Word documents allowed.'
+            severity ERROR;
+
+        // Validate thumbnail if provided
+        when thumbnail is not null then {
+            validate length(thumbnail) <= 500000
+                message 'Thumbnail size exceeds 500KB limit'
+                severity ERROR;
+        }
+    }
+}
+
+rule ProductImageValidation for Product {
+    on before CREATE, UPDATE {
+        // Validate image format
+        validate mainImage.mime_type in ['image/jpeg', 'image/png', 'image/webp']
+            message 'Product image must be JPEG, PNG, or WebP format'
+            severity ERROR;
+
+        // Validate image size
+        validate mainImage.size <= 5242880
+            message 'Product image exceeds 5MB limit'
+            severity ERROR;
+
+        // Validate manual if provided
+        when manual is not null then {
+            validate manual.mime_type = 'application/pdf'
+                message 'Product manual must be PDF format'
+                severity ERROR;
+
+            validate manual.size <= 104857600
+                message 'Product manual exceeds 100MB limit'
+                severity ERROR;
+        }
+    }
+}
+
+rule MediaAssetTypeValidation for MediaAsset {
+    on before CREATE, UPDATE {
+        // Ensure asset type matches file MIME type
+        when assetType = 'image' then {
+            validate file.mime_type in ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+                message 'Asset type is image but file MIME type does not match'
+                severity ERROR;
+        }
+
+        when assetType = 'video' then {
+            validate file.mime_type in ['video/mp4', 'video/webm']
+                message 'Asset type is video but file MIME type does not match'
+                severity ERROR;
+        }
+
+        when assetType = 'audio' then {
+            validate file.mime_type in ['audio/mp3', 'audio/wav', 'audio/ogg']
+                message 'Asset type is audio but file MIME type does not match'
+                severity ERROR;
+        }
+    }
+}
+
+// ============================================
+// Expected PostgreSQL DDL Output
+// ============================================
+/*
+
+CREATE TABLE documents (
+    id UUID PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description VARCHAR(2000),
+
+    -- FileReference 'content' expands to 8 columns:
+    content_provider VARCHAR(50) NOT NULL,
+    content_bucket VARCHAR(255) NOT NULL,
+    content_key VARCHAR(1024) NOT NULL,
+    content_size BIGINT NOT NULL,
+    content_mime_type VARCHAR(100) NOT NULL,
+    content_checksum VARCHAR(64) NOT NULL,
+    content_uploaded_at TIMESTAMPTZ NOT NULL,
+    content_uploaded_by UUID NOT NULL,
+
+    -- Legacy Binary field
+    thumbnail BYTEA,
+
+    -- Other fields
+    category VARCHAR(100) NOT NULL,
+    tags VARCHAR(500),
+    version INTEGER NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    created_by UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    modified_by UUID,
+    modified_at TIMESTAMPTZ,
+
+    -- Storage constraints
+    CONSTRAINT chk_content_max_size CHECK (content_size <= 52428800),
+    CONSTRAINT chk_content_mime_type CHECK (content_mime_type IN (
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    )),
+    CONSTRAINT chk_content_provider CHECK (content_provider = 'S3')
+);
+
+CREATE INDEX idx_documents_content_key ON documents(content_key);
+CREATE INDEX idx_documents_content_checksum ON documents(content_checksum);
+
+*/

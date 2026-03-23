@@ -1,0 +1,10 @@
+{
+  "name": "BMMDL.Plugin.Identity",
+  "version": "1.0.0",
+  "description": "Platform identity — User, Role, UserRole entities, default roles, permissions",
+  "author": "BMMDL Team",
+  "entryAssembly": "BMMDL.Plugin.Identity.dll",
+  "dependencies": [],
+  "bmmdlModules": [],
+  "autoLoad": true
+}

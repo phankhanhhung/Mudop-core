@@ -1,0 +1,212 @@
+﻿// ============================================================
+// Module: HR
+// Description: Human Resources - Leave, Performance, Training
+// Install Order: 3
+// ============================================================
+
+module HR version '1.0.0' {
+    author: 'ERP Team';
+    description: 'Human Resources management module';
+    depends on MasterData version '>=1.0.0';
+    imports MasterData;
+    publishes HR;
+
+    namespace HR {
+        // ============================================================
+        // LEAVE MANAGEMENT
+        // ============================================================
+
+        @Description: 'Leave type configuration'
+        entity LeaveType : Auditable, TenantAware {
+            key ID: UUID;
+
+            code: ShortCode;
+            name: Name;
+
+            leaveCategory: LeaveCategory;
+            defaultDays: Integer;
+            carryOverAllowed: Boolean default false;
+            maxCarryOver: Integer default 0;
+            requiresApproval: Boolean default true;
+            isPaid: Boolean default true;
+
+            isActive: Boolean default true;
+        }
+
+        enum LeaveCategory {
+            Annual;
+            Sick;
+            Maternity;
+            Paternity;
+            Compassionate;
+            Unpaid;
+            Study;
+            Sabbatical;
+        }
+
+        @Description: 'Leave balance per employee'
+        entity LeaveBalance : Auditable, TenantAware {
+            key ID: UUID;
+
+            employee: association [1] to Employee;
+            leaveType: association [1] to LeaveType;
+            balanceYear: Integer;
+
+            entitled: Quantity default 0;
+            used: Quantity default 0;
+            pending: Quantity default 0;
+            carriedOver: Quantity default 0;
+
+            @Computed
+            available: Quantity;
+        }
+
+        @Description: 'Leave request'
+        entity LeaveRequest : Auditable, TenantAware {
+            key ID: UUID;
+
+            @Sequence.Name: 'LeaveRequestSeq'
+            @Sequence.Pattern: 'LV-{year}-{seq:6}'
+            requestNumber: Code;
+
+            employee: association [1] to Employee;
+            leaveType: association [1] to LeaveType;
+
+            startDate: Date;
+            endDate: Date;
+            totalDays: Quantity;
+
+            reason: Description;
+            status: LeaveStatus default #Pending;
+
+            approver: association [0,1] to Employee;
+            approvedAt: Timestamp;
+            approverComments: String(500);
+        }
+
+        enum LeaveStatus {
+            Pending;
+            Approved;
+            Rejected;
+            Cancelled;
+            Taken;
+        }
+
+        // ============================================================
+        // PERFORMANCE MANAGEMENT
+        // ============================================================
+
+        @Description: 'Performance review cycle'
+        entity PerformanceCycle : Auditable, TenantAware {
+            key ID: UUID;
+
+            name: Name;
+            reviewYear: Integer;
+            startDate: Date;
+            endDate: Date;
+
+            status: CycleStatus default #Planning;
+
+            reviews: composition [*] of PerformanceReview;
+        }
+
+        enum CycleStatus {
+            Planning;
+            Active;
+            InReview;
+            Completed;
+            Archived;
+        }
+
+        @Description: 'Individual performance review'
+        entity PerformanceReview : Auditable, TenantAware {
+            key ID: UUID;
+
+            employee: association [1] to Employee;
+            reviewer: association [1] to Employee;
+
+            selfRating: PerformanceRating;
+            managerRating: PerformanceRating;
+            finalRating: PerformanceRating;
+
+            strengths: Description;
+            improvements: Description;
+            goals: Description;
+
+            status: ReviewStatus default #Draft;
+
+            objectives: composition [*] of ReviewObjective;
+        }
+
+        enum PerformanceRating {
+            Exceptional = 5;
+            ExceedsExpectations = 4;
+            MeetsExpectations = 3;
+            NeedsImprovement = 2;
+            Unsatisfactory = 1;
+        }
+
+        enum ReviewStatus {
+            Draft;
+            SelfAssessment;
+            ManagerReview;
+            Calibration;
+            Completed;
+        }
+
+        entity ReviewObjective: TenantAware {
+            key ID: UUID;
+
+            title: Name;
+            description: Description;
+            weight: Percentage;
+
+            targetValue: String(100);
+            actualValue: String(100);
+
+            selfScore: Integer;
+            managerScore: Integer;
+        }
+
+        // ============================================================
+        // TRAINING
+        // ============================================================
+
+        entity TrainingCourse : Auditable, TenantAware {
+            key ID: UUID;
+
+            code: ShortCode;
+            name: Name;
+            description: Description;
+
+            category: String(50);
+            durationHours: Integer;
+            isMandatory: Boolean default false;
+
+            isActive: Boolean default true;
+        }
+
+        entity TrainingEnrollment : Auditable, TenantAware {
+            key ID: UUID;
+
+            employee: association [1] to Employee;
+            course: association [1] to TrainingCourse;
+
+            scheduledDate: Date;
+            completedDate: Date;
+
+            status: TrainingStatus default #Scheduled;
+            score: Integer;
+            certificate: String(100);
+        }
+
+        enum TrainingStatus {
+            Scheduled;
+            InProgress;
+            Completed;
+            Cancelled;
+            Failed;
+        }
+
+    }
+}

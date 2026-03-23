@@ -1,0 +1,925 @@
+<edmx:Edmx Version="4.0" xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx">
+  <edmx:Reference Uri="https://docs.oasis-open.org/odata/odata/v4.0/errata03/csd01/complete/vocabularies/Org.OData.Core.V1.xml">
+    <edmx:Include Namespace="Org.OData.Core.V1" Alias="Core" />
+  </edmx:Reference>
+  <edmx:Reference Uri="https://docs.oasis-open.org/odata/odata/v4.0/errata03/csd01/complete/vocabularies/Org.OData.Capabilities.V1.xml">
+    <edmx:Include Namespace="Org.OData.Capabilities.V1" Alias="Capabilities" />
+  </edmx:Reference>
+  <edmx:DataServices>
+    <Schema Namespace="ActionTest" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <EntityType Name="ActionItem">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="name" Type="Edm.String" MaxLength="100" />
+        <Property Name="price" Type="Edm.String" Precision="15" Scale="2" />
+        <Property Name="quantity" Type="Edm.Int32" />
+        <Property Name="total" Type="Edm.String" Precision="15" Scale="2" />
+        <Property Name="status" Type="Edm.String" MaxLength="20" DefaultValue="draft" />
+      </EntityType>
+      <Action Name="calculateTotal">
+        <ReturnType Type="Edm.String" />
+      </Action>
+      <EntityContainer Name="DefaultContainer">
+        <EntitySet Name="TestStockLevel" EntityType="WarehouseTest.TestStockLevel">
+          <NavigationPropertyBinding Path="location" Target="TestStorageLocation" />
+        </EntitySet>
+        <EntitySet Name="TestStorageLocation" EntityType="WarehouseTest.TestStorageLocation">
+          <NavigationPropertyBinding Path="zone" Target="TestStorageZone" />
+        </EntitySet>
+        <EntitySet Name="TestOrder" EntityType="WarehouseTest.TestOrder">
+          <NavigationPropertyBinding Path="items" Target="TestOrderItem" />
+        </EntitySet>
+        <Singleton Name="TestSystemSettings" Type="WarehouseTest.TestSystemSettings" />
+        <EntitySet Name="TestOrderItem" EntityType="WarehouseTest.TestOrderItem" />
+        <EntitySet Name="TestWarehouse" EntityType="WarehouseTest.TestWarehouse" />
+        <EntitySet Name="TestProduct" EntityType="WarehouseTest.TestProduct" />
+        <EntitySet Name="TestStorageZone" EntityType="WarehouseTest.TestStorageZone">
+          <NavigationPropertyBinding Path="warehouse" Target="TestWarehouse" />
+        </EntitySet>
+        <EntitySet Name="TestDocument" EntityType="WarehouseTest.TestDocument" />
+        <EntitySet Name="TestStockReservation" EntityType="WarehouseTest.TestStockReservation">
+          <NavigationPropertyBinding Path="location" Target="TestStorageLocation" />
+        </EntitySet>
+        <EntitySet Name="User" EntityType="core.User">
+          <NavigationPropertyBinding Path="permissions" Target="SystemPermission" />
+        </EntitySet>
+        <EntitySet Name="Role" EntityType="core.Role" />
+        <EntitySet Name="RolePermission" EntityType="core.RolePermission" />
+        <EntitySet Name="UserRole" EntityType="core.UserRole" />
+        <EntitySet Name="SystemPermission" EntityType="core.SystemPermission" />
+        <EntitySet Name="ActionItem" EntityType="ActionTest.ActionItem" />
+        <ActionImport Name="InitializeWarehouse" Action="WarehouseTest.InitializeWarehouse" />
+        <FunctionImport Name="CheckStockLevel" Function="WarehouseTest.CheckStockLevel" IncludeInServiceDocument="true" />
+        <FunctionImport Name="GetTotalWarehouses" Function="WarehouseTest.GetTotalWarehouses" IncludeInServiceDocument="true" />
+        <ActionImport Name="calculateTotal" Action="ActionTest.calculateTotal" />
+      </EntityContainer>
+      <Annotations Target="ActionTest.DefaultContainer/TestStockLevel">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="ActionTest.DefaultContainer/TestStorageLocation">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="ActionTest.DefaultContainer/TestOrder">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="ActionTest.DefaultContainer/TestOrderItem">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="false" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="ActionTest.DefaultContainer/TestWarehouse">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="false" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="ActionTest.DefaultContainer/TestProduct">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="false" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="ActionTest.DefaultContainer/TestStorageZone">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="ActionTest.DefaultContainer/TestDocument">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="false" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="ActionTest.DefaultContainer/TestStockReservation">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="ActionTest.DefaultContainer/User">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="ActionTest.DefaultContainer/Role">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="false" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="ActionTest.DefaultContainer/RolePermission">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="false" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="ActionTest.DefaultContainer/UserRole">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="false" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="ActionTest.DefaultContainer/SystemPermission">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="false" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+      <Annotations Target="ActionTest.DefaultContainer/ActionItem">
+        <Annotation Term="Org.OData.Capabilities.V1.FilterRestrictions">
+          <Record>
+            <PropertyValue Property="Filterable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SortRestrictions">
+          <Record>
+            <PropertyValue Property="Sortable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.ExpandRestrictions">
+          <Record>
+            <PropertyValue Property="Expandable" Bool="false" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.SearchRestrictions">
+          <Record>
+            <PropertyValue Property="Searchable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.InsertRestrictions">
+          <Record>
+            <PropertyValue Property="Insertable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.UpdateRestrictions">
+          <Record>
+            <PropertyValue Property="Updatable" Bool="true" />
+          </Record>
+        </Annotation>
+        <Annotation Term="Org.OData.Capabilities.V1.DeleteRestrictions">
+          <Record>
+            <PropertyValue Property="Deletable" Bool="true" />
+          </Record>
+        </Annotation>
+      </Annotations>
+    </Schema>
+    <Schema Namespace="core" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <EntityType Name="User">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="tenantId" Type="Edm.Guid" />
+        <Property Name="identityId" Type="Edm.Guid" />
+        <Property Name="displayName" Type="Edm.String" MaxLength="200" />
+        <Property Name="jobTitle" Type="Edm.String" MaxLength="100" />
+        <Property Name="department" Type="Edm.String" MaxLength="100" />
+        <Property Name="employeeCode" Type="Edm.String" MaxLength="50" />
+        <Property Name="status" Type="Edm.String" MaxLength="50" DefaultValue="active" />
+        <Property Name="invitedById" Type="Edm.Guid" />
+        <Property Name="invitedAt" Type="Edm.DateTimeOffset" />
+        <Property Name="acceptedAt" Type="Edm.DateTimeOffset" />
+        <Property Name="leftAt" Type="Edm.DateTimeOffset" />
+        <Property Name="leftReason" Type="Edm.String" MaxLength="500" />
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" DefaultValue="$now" />
+        <Property Name="updatedAt" Type="Edm.DateTimeOffset" />
+        <NavigationProperty Name="permissions" Type="Collection(core.SystemPermission)" Nullable="true" />
+      </EntityType>
+      <EntityType Name="Role">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="tenantId" Type="Edm.Guid" />
+        <Property Name="name" Type="Edm.String" MaxLength="100" />
+        <Property Name="description" Type="Edm.String" MaxLength="500" />
+        <Property Name="isSystemRole" Type="Edm.Boolean" DefaultValue="false" />
+        <Property Name="isDefault" Type="Edm.Boolean" DefaultValue="false" />
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" DefaultValue="$now" />
+        <Property Name="updatedAt" Type="Edm.DateTimeOffset" />
+      </EntityType>
+      <EntityType Name="RolePermission">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="tenantId" Type="Edm.Guid" />
+        <Property Name="roleId" Type="Edm.Guid" />
+        <Property Name="permissionId" Type="Edm.Guid" />
+        <Property Name="assignedAt" Type="Edm.DateTimeOffset" DefaultValue="$now" />
+      </EntityType>
+      <EntityType Name="UserRole">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="tenantId" Type="Edm.Guid" />
+        <Property Name="userId" Type="Edm.Guid" />
+        <Property Name="roleId" Type="Edm.Guid" />
+        <Property Name="assignedById" Type="Edm.Guid" />
+        <Property Name="assignedAt" Type="Edm.DateTimeOffset" DefaultValue="$now" />
+        <Property Name="expiresAt" Type="Edm.DateTimeOffset" />
+      </EntityType>
+      <EntityType Name="SystemPermission">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="tenantId" Type="Edm.Guid" />
+        <Property Name="name" Type="Edm.String" MaxLength="100" />
+        <Property Name="description" Type="Edm.String" MaxLength="500" />
+        <Property Name="isSystemRole" Type="Edm.Boolean" DefaultValue="true" />
+        <Property Name="isDefault" Type="Edm.Boolean" DefaultValue="false" />
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" DefaultValue="$now" />
+        <Property Name="updatedAt" Type="Edm.DateTimeOffset" />
+      </EntityType>
+    </Schema>
+    <Schema Namespace="WarehouseTest" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+      <EntityType Name="TestStockLevel">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="productSku" Type="Edm.String" MaxLength="50" />
+        <Property Name="quantityOnHand" Type="Edm.Int32" DefaultValue="0" />
+        <Property Name="quantityReserved" Type="Edm.Int32" DefaultValue="0" />
+        <Property Name="quantityAvailable" Type="Edm.Int32">
+          <Annotation Term="Org.OData.Core.V1.Computed" Bool="true" />
+        </Property>
+        <Property Name="lotNumber" Type="Edm.String" MaxLength="50" />
+        <Property Name="expiryDate" Type="Edm.Date" />
+        <Property Name="lastMovementDate" Type="Edm.DateTimeOffset" />
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+        <Property Name="createdBy" Type="Edm.Guid" />
+        <Property Name="modifiedAt" Type="Edm.DateTimeOffset" />
+        <Property Name="modifiedBy" Type="Edm.Guid" />
+        <Property Name="tenantId" Type="Edm.Guid" />
+        <NavigationProperty Name="location" Type="WarehouseTest.TestStorageLocation" Nullable="false">
+          <ReferentialConstraint Property="locationId" ReferencedProperty="Id" />
+        </NavigationProperty>
+      </EntityType>
+      <EntityType Name="TestStorageLocation">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="code" Type="Edm.String" MaxLength="50" />
+        <Property Name="aisle" Type="Edm.String" MaxLength="10" />
+        <Property Name="rack" Type="Edm.String" MaxLength="10" />
+        <Property Name="level" Type="Edm.String" MaxLength="10" />
+        <Property Name="bin" Type="Edm.String" MaxLength="10" />
+        <Property Name="isActive" Type="Edm.Boolean" DefaultValue="true" />
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+        <Property Name="createdBy" Type="Edm.Guid" />
+        <Property Name="modifiedAt" Type="Edm.DateTimeOffset" />
+        <Property Name="modifiedBy" Type="Edm.Guid" />
+        <Property Name="tenantId" Type="Edm.Guid" />
+        <NavigationProperty Name="zone" Type="WarehouseTest.TestStorageZone" Nullable="false">
+          <ReferentialConstraint Property="zoneId" ReferencedProperty="Id" />
+        </NavigationProperty>
+      </EntityType>
+      <EntityType Name="TestOrder">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="orderNumber" Type="Edm.String" MaxLength="50" />
+        <Property Name="customerName" Type="Edm.String" MaxLength="100" />
+        <Property Name="totalAmount" Type="Edm.String" Precision="18" Scale="2" DefaultValue="0" />
+        <Property Name="status" Type="Edm.String" MaxLength="20" DefaultValue="draft" />
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+        <Property Name="createdBy" Type="Edm.Guid" />
+        <Property Name="modifiedAt" Type="Edm.DateTimeOffset" />
+        <Property Name="modifiedBy" Type="Edm.Guid" />
+        <Property Name="tenantId" Type="Edm.Guid" />
+        <NavigationProperty Name="items" Type="Collection(WarehouseTest.TestOrderItem)" Nullable="true" ContainsTarget="true" />
+      </EntityType>
+      <EntityType Name="TestSystemSettings">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="systemName" Type="Edm.String" MaxLength="100" />
+        <Property Name="defaultCurrency" Type="Edm.String" MaxLength="3" DefaultValue="USD" />
+        <Property Name="maxLoginAttempts" Type="Edm.Int32" DefaultValue="5" />
+        <Property Name="sessionTimeoutMinutes" Type="Edm.Int32" DefaultValue="30" />
+        <Property Name="maintenanceMode" Type="Edm.Boolean" DefaultValue="false" />
+        <Property Name="tenantId" Type="Edm.Guid" />
+      </EntityType>
+      <EntityType Name="TestOrderItem">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="productName" Type="Edm.String" MaxLength="100" />
+        <Property Name="quantity" Type="Edm.Int32" DefaultValue="1" />
+        <Property Name="unitPrice" Type="Edm.String" Precision="18" Scale="2" DefaultValue="0" />
+        <Property Name="tenantId" Type="Edm.Guid" />
+      </EntityType>
+      <EntityType Name="TestWarehouse">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="code" Type="Edm.String" MaxLength="50" />
+        <Property Name="name" Type="Edm.String" MaxLength="100" />
+        <Property Name="isActive" Type="Edm.Boolean" DefaultValue="true" />
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+        <Property Name="createdBy" Type="Edm.Guid" />
+        <Property Name="modifiedAt" Type="Edm.DateTimeOffset" />
+        <Property Name="modifiedBy" Type="Edm.Guid" />
+        <Property Name="tenantId" Type="Edm.Guid" />
+      </EntityType>
+      <EntityType Name="TestProduct">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="sku" Type="Edm.String" MaxLength="50" />
+        <Property Name="name" Type="Edm.String" MaxLength="100" />
+        <Property Name="description" Type="Edm.String" MaxLength="500" />
+        <Property Name="costPrice" Type="Edm.String" Precision="15" Scale="2" DefaultValue="0" />
+        <Property Name="sellingPrice" Type="Edm.String" Precision="15" Scale="2" DefaultValue="0" />
+        <Property Name="profit" Type="Edm.String" Precision="15" Scale="2">
+          <Annotation Term="Org.OData.Core.V1.Computed" Bool="true" />
+        </Property>
+        <Property Name="minStockLevel" Type="Edm.Int32" DefaultValue="0" />
+        <Property Name="maxStockLevel" Type="Edm.Int32" DefaultValue="1000" />
+        <Property Name="reorderPoint" Type="Edm.Int32" DefaultValue="10" />
+        <Property Name="stockLevel" Type="Edm.Int32" DefaultValue="0" />
+        <Property Name="isActive" Type="Edm.Boolean" DefaultValue="true" />
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+        <Property Name="createdBy" Type="Edm.Guid" />
+        <Property Name="modifiedAt" Type="Edm.DateTimeOffset" />
+        <Property Name="modifiedBy" Type="Edm.Guid" />
+        <Property Name="tenantId" Type="Edm.Guid" />
+      </EntityType>
+      <EntityType Name="TestStorageZone">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="code" Type="Edm.String" MaxLength="50" />
+        <Property Name="name" Type="Edm.String" MaxLength="100" />
+        <Property Name="zoneType" Type="Edm.String" DefaultValue="General" />
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+        <Property Name="createdBy" Type="Edm.Guid" />
+        <Property Name="modifiedAt" Type="Edm.DateTimeOffset" />
+        <Property Name="modifiedBy" Type="Edm.Guid" />
+        <Property Name="tenantId" Type="Edm.Guid" />
+        <NavigationProperty Name="warehouse" Type="WarehouseTest.TestWarehouse" Nullable="false">
+          <ReferentialConstraint Property="warehouseId" ReferencedProperty="Id" />
+        </NavigationProperty>
+      </EntityType>
+      <EntityType Name="TestDocument" HasStream="true">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="title" Type="Edm.String" MaxLength="200" />
+        <Property Name="category" Type="Edm.String" MaxLength="100" />
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+        <Property Name="createdBy" Type="Edm.Guid" />
+        <Property Name="modifiedAt" Type="Edm.DateTimeOffset" />
+        <Property Name="modifiedBy" Type="Edm.Guid" />
+        <Property Name="tenantId" Type="Edm.Guid" />
+      </EntityType>
+      <EntityType Name="TestStockReservation">
+        <Key>
+          <PropertyRef Name="id" />
+        </Key>
+        <Property Name="id" Type="Edm.Guid">
+          <Annotation Term="Org.OData.Core.V1.Immutable" Bool="true" />
+        </Property>
+        <Property Name="productSku" Type="Edm.String" MaxLength="50" />
+        <Property Name="reservedQuantity" Type="Edm.Int32" />
+        <Property Name="reservedBy" Type="Edm.String" MaxLength="100" />
+        <Property Name="reservationDate" Type="Edm.DateTimeOffset" DefaultValue="$now" />
+        <Property Name="status" Type="Edm.String" DefaultValue="Active" />
+        <Property Name="notes" Type="Edm.String" MaxLength="500" />
+        <Property Name="createdAt" Type="Edm.DateTimeOffset" />
+        <Property Name="createdBy" Type="Edm.Guid" />
+        <Property Name="modifiedAt" Type="Edm.DateTimeOffset" />
+        <Property Name="modifiedBy" Type="Edm.Guid" />
+        <Property Name="tenantId" Type="Edm.Guid" />
+        <NavigationProperty Name="location" Type="WarehouseTest.TestStorageLocation" Nullable="false">
+          <ReferentialConstraint Property="locationId" ReferencedProperty="Id" />
+        </NavigationProperty>
+      </EntityType>
+      <EnumType Name="TestReservationStatus">
+        <Member Name="Active" Value="0" />
+        <Member Name="Fulfilled" Value="1" />
+        <Member Name="Expired" Value="2" />
+        <Member Name="Cancelled" Value="3" />
+      </EnumType>
+      <EnumType Name="TestZoneType">
+        <Member Name="General" Value="0" />
+        <Member Name="Refrigerated" Value="1" />
+        <Member Name="Frozen" Value="2" />
+        <Member Name="Hazardous" Value="3" />
+      </EnumType>
+      <Action Name="InitializeWarehouse">
+        <Parameter Name="warehouseCode" Type="Edm.String" />
+        <Parameter Name="warehouseName" Type="Edm.String" />
+        <Parameter Name="zoneCount" Type="Edm.Int32" />
+        <ReturnType Type="Edm.Guid" />
+      </Action>
+      <Function Name="CheckStockLevel">
+        <Parameter Name="sku" Type="Edm.String" />
+        <ReturnType Type="Edm.Int32" />
+      </Function>
+      <Function Name="GetTotalWarehouses">
+        <ReturnType Type="Edm.Int32" />
+      </Function>
+      <Action Name="Restock" IsBound="true">
+        <Parameter Name="bindingParameter" Type="WarehouseTest.TestProduct" />
+        <Parameter Name="quantity" Type="Edm.Int32" />
+        <Parameter Name="lotNumber" Type="Edm.String" />
+        <ReturnType Type="Edm.Boolean" />
+      </Action>
+      <Function Name="GetEffectivePrice" IsBound="true">
+        <Parameter Name="bindingParameter" Type="WarehouseTest.TestProduct" />
+        <Parameter Name="discount" Type="Edm.Decimal" />
+        <ReturnType Type="Edm.Decimal" />
+      </Function>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

@@ -1,0 +1,368 @@
+// =============================================================================
+// Sample Configuration Data
+// =============================================================================
+// This file demonstrates how to configure the system using the
+// Configuration Management module
+// =============================================================================
+
+import Config;
+
+// =============================================================================
+// DEVELOPMENT ENVIRONMENT CONFIGURATION
+// =============================================================================
+
+data SystemConfiguration DevConfig {
+    ID: UUID('00000000-0000-0000-0000-000000000001'),
+    configName: 'Development-Local',
+    environment: EnvironmentType.Development,
+    status: ConfigStatus.Active,
+    description: 'Local development environment configuration',
+    version: '1.0.0',
+    effectiveFrom: Timestamp('2026-01-10T00:00:00Z'),
+    isDefault: true,
+    isActive: true
+}
+
+// Database Configuration
+data DatabaseEndpoint DevMainDB {
+    ID: UUID('10000000-0000-0000-0000-000000000001'),
+    endpointName: 'Dev-Main-DB',
+    provider: DatabaseProvider.PostgreSQL,
+    purpose: 'BusinessEntities',
+    host: 'localhost',
+    port: 5432,
+    databaseName: 'bmmdl_dev',
+    username: 'postgres',
+    password: 'postgres',  // In real env, this should be encrypted
+    useSsl: false,
+    minPoolSize: 5,
+    maxPoolSize: 20,
+    connectionTimeout: 15,
+    commandTimeout: 30,
+    isActive: true,
+    isPrimary: true,
+    environment: EnvironmentType.Development,
+    priority: 1,
+    systemConfig: -> DevConfig
+}
+
+data DatabaseEndpoint DevMetadataDB {
+    ID: UUID('10000000-0000-0000-0000-000000000002'),
+    endpointName: 'Dev-Metadata-DB',
+    provider: DatabaseProvider.PostgreSQL,
+    purpose: 'Metadata',
+    host: 'localhost',
+    port: 5432,
+    databaseName: 'bmmdl_metadata_dev',
+    username: 'postgres',
+    password: 'postgres',
+    useSsl: false,
+    minPoolSize: 2,
+    maxPoolSize: 10,
+    connectionTimeout: 15,
+    commandTimeout: 30,
+    isActive: true,
+    isPrimary: true,
+    environment: EnvironmentType.Development,
+    priority: 1,
+    systemConfig: -> DevConfig
+}
+
+// Storage Configuration (Local for Dev)
+data StorageProvider DevLocalStorage {
+    ID: UUID('20000000-0000-0000-0000-000000000001'),
+    providerName: 'Dev-Local-Storage',
+    providerType: StorageProviderType.Local,
+    purpose: 'DocumentStorage',
+    endpoint: 'file:///var/bmmdl/storage',
+    bucketName: 'dev-documents',
+    accessKey: 'not-used',
+    secretKey: 'not-used',
+    useSsl: false,
+    publicAccess: false,
+    cdnEnabled: false,
+    maxFileSize: 104857600,  // 100MB
+    allowedMimeTypes: '["application/pdf", "image/jpeg", "image/png", "application/msword"]',
+    isActive: true,
+    isDefault: true,
+    environment: EnvironmentType.Development,
+    priority: 1,
+    systemConfig: -> DevConfig
+}
+
+// Auth Configuration (Simple JWT for Dev)
+data AuthProvider DevJWT {
+    ID: UUID('30000000-0000-0000-0000-000000000001'),
+    providerName: 'Dev-JWT',
+    providerType: AuthProviderType.JWT,
+    issuer: 'https://localhost:5001',
+    clientId: 'bmmdl-dev-client',
+    clientSecret: 'dev-secret-key-change-in-production',
+    scopes: 'openid profile email',
+    tokenLifetime: 3600,  // 1 hour
+    refreshTokenEnabled: true,
+    isActive: true,
+    isPrimary: true,
+    environment: EnvironmentType.Development,
+    priority: 1,
+    systemConfig: -> DevConfig
+}
+
+// Core Table Mappings
+data CoreTableMapping DevUserTable {
+    ID: UUID('40000000-0000-0000-0000-000000000001'),
+    tableType: 'User',
+    databaseEndpoint: -> DevMainDB,
+    schemaName: 'auth',
+    tableName: 'users',
+    primaryKeyColumn: 'id',
+    columnMappings: '{"id": "id", "email": "email", "name": "full_name", "tenantId": "tenant_id", "createdAt": "created_at"}',
+    isActive: true,
+    version: '1.0.0',
+    environment: EnvironmentType.Development,
+    description: 'User table mapping for authentication',
+    systemConfig: -> DevConfig
+}
+
+data CoreTableMapping DevTenantTable {
+    ID: UUID('40000000-0000-0000-0000-000000000002'),
+    tableType: 'Tenant',
+    databaseEndpoint: -> DevMainDB,
+    schemaName: 'auth',
+    tableName: 'tenants',
+    primaryKeyColumn: 'id',
+    columnMappings: '{"id": "id", "name": "name", "subdomain": "subdomain", "isActive": "is_active"}',
+    isActive: true,
+    version: '1.0.0',
+    environment: EnvironmentType.Development,
+    description: 'Tenant table mapping for multi-tenancy',
+    systemConfig: -> DevConfig
+}
+
+data CoreTableMapping DevRoleTable {
+    ID: UUID('40000000-0000-0000-0000-000000000003'),
+    tableType: 'Role',
+    databaseEndpoint: -> DevMainDB,
+    schemaName: 'auth',
+    tableName: 'roles',
+    primaryKeyColumn: 'id',
+    columnMappings: '{"id": "id", "name": "name", "description": "description", "permissions": "permissions_json"}',
+    isActive: true,
+    version: '1.0.0',
+    environment: EnvironmentType.Development,
+    description: 'Role table mapping for RBAC',
+    systemConfig: -> DevConfig
+}
+
+// =============================================================================
+// PRODUCTION ENVIRONMENT CONFIGURATION
+// =============================================================================
+
+data SystemConfiguration ProdConfig {
+    ID: UUID('00000000-0000-0000-0000-000000000002'),
+    configName: 'Production-US-East',
+    environment: EnvironmentType.Production,
+    status: ConfigStatus.Active,
+    description: 'Production environment in US East region',
+    version: '1.0.0',
+    effectiveFrom: Timestamp('2026-01-10T00:00:00Z'),
+    isDefault: false,
+    isActive: true
+}
+
+// Production Primary Database
+data DatabaseEndpoint ProdPrimaryDB {
+    ID: UUID('10000000-0000-0000-0000-000000000003'),
+    endpointName: 'Prod-Primary-DB',
+    provider: DatabaseProvider.PostgreSQL,
+    purpose: 'BusinessEntities',
+    host: 'prod-db-primary.company.com',
+    port: 5432,
+    databaseName: 'bmmdl_prod',
+    username: 'bmmdl_app',
+    password: '<encrypted-password>',
+    connectionString: 'Host=prod-db-primary.company.com;Port=5432;Database=bmmdl_prod;Username=bmmdl_app;Password=<encrypted>;SSL Mode=Require',
+    useSsl: true,
+    sslMode: 'verify-full',
+    sslCertPath: '/etc/ssl/certs/postgres-ca.crt',
+    minPoolSize: 20,
+    maxPoolSize: 200,
+    connectionTimeout: 30,
+    commandTimeout: 60,
+    isActive: true,
+    isPrimary: true,
+    environment: EnvironmentType.Production,
+    priority: 1,
+    systemConfig: -> ProdConfig
+}
+
+// Production Read Replica
+data DatabaseEndpoint ProdReplicaDB {
+    ID: UUID('10000000-0000-0000-0000-000000000004'),
+    endpointName: 'Prod-Replica-DB',
+    provider: DatabaseProvider.PostgreSQL,
+    purpose: 'Analytics',
+    host: 'prod-db-replica.company.com',
+    port: 5432,
+    databaseName: 'bmmdl_prod',
+    username: 'bmmdl_readonly',
+    password: '<encrypted-password>',
+    useSsl: true,
+    sslMode: 'verify-full',
+    minPoolSize: 10,
+    maxPoolSize: 50,
+    connectionTimeout: 30,
+    commandTimeout: 120,
+    isActive: true,
+    isPrimary: false,
+    environment: EnvironmentType.Production,
+    priority: 2,
+    systemConfig: -> ProdConfig
+}
+
+// Production S3 Storage
+data StorageProvider ProdS3Documents {
+    ID: UUID('20000000-0000-0000-0000-000000000002'),
+    providerName: 'Prod-S3-Documents',
+    providerType: StorageProviderType.S3,
+    purpose: 'DocumentStorage',
+    endpoint: 's3.amazonaws.com',
+    region: 'us-east-1',
+    bucketName: 'company-prod-documents',
+    accessKey: '<encrypted-access-key>',
+    secretKey: '<encrypted-secret-key>',
+    useSsl: true,
+    publicAccess: false,
+    cdnEnabled: true,
+    cdnUrl: 'https://cdn.company.com/documents',
+    maxFileSize: 524288000,  // 500MB
+    allowedMimeTypes: '["application/pdf", "image/jpeg", "image/png", "video/mp4", "application/zip"]',
+    isActive: true,
+    isDefault: true,
+    environment: EnvironmentType.Production,
+    priority: 1,
+    systemConfig: -> ProdConfig
+}
+
+// Production S3 Images (separate bucket)
+data StorageProvider ProdS3Images {
+    ID: UUID('20000000-0000-0000-0000-000000000003'),
+    providerName: 'Prod-S3-Images',
+    providerType: StorageProviderType.S3,
+    purpose: 'ImageStorage',
+    endpoint: 's3.amazonaws.com',
+    region: 'us-east-1',
+    bucketName: 'company-prod-images',
+    accessKey: '<encrypted-access-key>',
+    secretKey: '<encrypted-secret-key>',
+    useSsl: true,
+    publicAccess: true,
+    cdnEnabled: true,
+    cdnUrl: 'https://images.company.com',
+    maxFileSize: 10485760,  // 10MB
+    allowedMimeTypes: '["image/jpeg", "image/png", "image/webp", "image/svg+xml"]',
+    isActive: true,
+    isDefault: false,
+    environment: EnvironmentType.Production,
+    priority: 1,
+    systemConfig: -> ProdConfig
+}
+
+// Production OIDC Auth
+data AuthProvider ProdOIDC {
+    ID: UUID('30000000-0000-0000-0000-000000000002'),
+    providerName: 'Prod-Corporate-SSO',
+    providerType: AuthProviderType.OIDC,
+    issuer: 'https://sso.company.com',
+    authorizationEndpoint: 'https://sso.company.com/oauth2/authorize',
+    tokenEndpoint: 'https://sso.company.com/oauth2/token',
+    userInfoEndpoint: 'https://sso.company.com/oauth2/userinfo',
+    jwksUri: 'https://sso.company.com/.well-known/jwks.json',
+    clientId: 'bmmdl-prod-client',
+    clientSecret: '<encrypted-client-secret>',
+    scopes: 'openid profile email groups',
+    requiredClaims: '["email", "email_verified", "groups"]',
+    tokenValidationPolicy: '{"validateIssuer": true, "validateAudience": true, "validateLifetime": true}',
+    tokenLifetime: 7200,  // 2 hours
+    refreshTokenEnabled: true,
+    isActive: true,
+    isPrimary: true,
+    environment: EnvironmentType.Production,
+    priority: 1,
+    systemConfig: -> ProdConfig
+}
+
+// Production LDAP (Fallback)
+data AuthProvider ProdLDAP {
+    ID: UUID('30000000-0000-0000-0000-000000000003'),
+    providerName: 'Prod-LDAP-Fallback',
+    providerType: AuthProviderType.LDAP,
+    ldapServer: 'ldap.company.com',
+    ldapPort: 636,  // LDAPS
+    baseDn: 'dc=company,dc=com',
+    bindDn: 'cn=bmmdl-service,ou=services,dc=company,dc=com',
+    bindPassword: '<encrypted-bind-password>',
+    isActive: true,
+    isPrimary: false,
+    environment: EnvironmentType.Production,
+    priority: 2,
+    systemConfig: -> ProdConfig
+}
+
+// Production Core Tables
+data CoreTableMapping ProdUserTable {
+    ID: UUID('40000000-0000-0000-0000-000000000004'),
+    tableType: 'User',
+    databaseEndpoint: -> ProdPrimaryDB,
+    schemaName: 'auth',
+    tableName: 'users',
+    primaryKeyColumn: 'id',
+    columnMappings: '{"id": "id", "email": "email", "name": "full_name", "tenantId": "tenant_id", "isActive": "is_active", "lastLogin": "last_login_at"}',
+    foreignKeyMappings: '[{"column": "tenant_id", "referencedTable": "tenants", "referencedColumn": "id"}]',
+    isActive: true,
+    version: '1.0.0',
+    environment: EnvironmentType.Production,
+    systemConfig: -> ProdConfig
+}
+
+data CoreTableMapping ProdTenantTable {
+    ID: UUID('40000000-0000-0000-0000-000000000005'),
+    tableType: 'Tenant',
+    databaseEndpoint: -> ProdPrimaryDB,
+    schemaName: 'auth',
+    tableName: 'tenants',
+    primaryKeyColumn: 'id',
+    columnMappings: '{"id": "id", "name": "name", "subdomain": "subdomain", "isActive": "is_active", "plan": "subscription_plan", "maxUsers": "max_users"}',
+    isActive: true,
+    version: '1.0.0',
+    environment: EnvironmentType.Production,
+    systemConfig: -> ProdConfig
+}
+
+data CoreTableMapping ProdRoleTable {
+    ID: UUID('40000000-0000-0000-0000-000000000006'),
+    tableType: 'Role',
+    databaseEndpoint: -> ProdPrimaryDB,
+    schemaName: 'rbac',
+    tableName: 'system_roles',
+    primaryKeyColumn: 'id',
+    columnMappings: '{"id": "id", "name": "role_name", "description": "role_description", "permissions": "permissions_json", "isSystem": "is_system_role"}',
+    isActive: true,
+    version: '1.0.0',
+    environment: EnvironmentType.Production,
+    systemConfig: -> ProdConfig
+}
+
+data CoreTableMapping ProdPermissionTable {
+    ID: UUID('40000000-0000-0000-0000-000000000007'),
+    tableType: 'Permission',
+    databaseEndpoint: -> ProdPrimaryDB,
+    schemaName: 'rbac',
+    tableName: 'permissions',
+    primaryKeyColumn: 'id',
+    columnMappings: '{"id": "id", "name": "permission_name", "resource": "resource_type", "action": "action_type", "scope": "access_scope"}',
+    isActive: true,
+    version: '1.0.0',
+    environment: EnvironmentType.Production,
+    systemConfig: -> ProdConfig
+}

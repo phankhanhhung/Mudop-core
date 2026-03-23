@@ -1,0 +1,487 @@
+﻿// =============================================================================
+// BMMDL Configuration Management Module
+// =============================================================================
+// Purpose: Centralized system configuration for database endpoints, storage
+//          providers, authentication, and core table mappings
+// Version: 1.0.0
+// Dependencies: Foundation (01_core)
+// =============================================================================
+
+module ConfigManagement version '1.0.0' {
+    author: 'BMMDL Team';
+    description: 'System-wide configuration management for database, storage, auth, and core table mappings';
+    depends on Foundation version '>=1.0.0';
+    imports Foundation;
+    publishes Config;
+
+    namespace Config {
+        // =============================================================================
+        // ENUMERATIONS
+        // =============================================================================
+
+        enum EnvironmentType {
+            Development,
+            Staging,
+            Production,
+            Test
+        }
+
+        enum DatabaseProvider {
+            PostgreSQL,
+            MySQL,
+            SQLServer,
+            Oracle,
+            MongoDB
+        }
+
+        enum StorageProviderType {
+            S3,
+            MinIO,
+            AzureBlob,
+            GCS,
+            Local
+        }
+
+        enum AuthProviderType {
+            OAuth2,
+            OIDC,
+            SAML,
+            LDAP,
+            JWT,
+            Custom
+        }
+
+        enum ConfigStatus {
+            Active,
+            Inactive,
+            Deprecated,
+            Testing
+        }
+
+        // =============================================================================
+        // MAIN CONFIGURATION ENTITY
+        // =============================================================================
+
+        @GlobalScoped
+        entity SystemConfiguration : Auditable {
+            key ID: UUID;
+
+            // Identification
+            configName: String(100);
+            environment: EnvironmentType;
+            status: ConfigStatus;
+
+            // Metadata
+            description: String(500)?;
+            version: String(20);
+            effectiveFrom: Timestamp;
+            effectiveUntil: Timestamp?;
+
+            // Flags
+            isDefault: Boolean;
+            isActive: Boolean;
+
+            // Relationships
+            databaseEndpoints: Composition of DatabaseEndpoint;
+            storageProviders: Composition of StorageProvider;
+            authProviders: Composition of AuthProvider;
+            coreTableMappings: Composition of CoreTableMapping;
+        }
+
+        // =============================================================================
+        // DATABASE ENDPOINT CONFIGURATION
+        // =============================================================================
+
+        @GlobalScoped
+        entity DatabaseEndpoint : Auditable {
+            key ID: UUID;
+
+            // Basic Info
+            endpointName: String(100);
+            provider: DatabaseProvider;
+            purpose: String(100);  // e.g., 'BusinessEntities', 'Metadata', 'Analytics'
+
+            // Connection Details
+            host: String(255);
+            port: Integer;
+            databaseName: String(100);
+            username: String(100);
+
+            // Security (encrypted in real implementation)
+            @Sensitive
+            password: String(500);  // Encrypted password
+
+            @Sensitive
+            connectionString: String(1000)?;  // Full connection string override
+
+            // SSL/TLS Configuration
+            useSsl: Boolean;
+            sslMode: String(50)?;  // e.g., 'require', 'verify-full'
+            sslCertPath: String(500)?;
+
+            // Connection Pool Settings
+            minPoolSize: Integer;
+            maxPoolSize: Integer;
+            connectionTimeout: Integer;  // in seconds
+            commandTimeout: Integer;     // in seconds
+
+            // Status
+            isActive: Boolean;
+            isPrimary: Boolean;  // Primary vs replica
+
+            // Metadata
+            environment: EnvironmentType;
+            priority: Integer;  // For fallback order
+
+            // Health Check
+            lastHealthCheck: Timestamp?;
+            healthStatus: String(50)?;  // 'Healthy', 'Degraded', 'Unavailable'
+
+            // Foreign Key
+            systemConfig: Association to SystemConfiguration;
+        }
+
+        // =============================================================================
+        // STORAGE PROVIDER CONFIGURATION
+        // =============================================================================
+
+        @GlobalScoped
+        entity StorageProvider : Auditable {
+            key ID: UUID;
+
+            // Basic Info
+            providerName: String(100);
+            providerType: StorageProviderType;
+            purpose: String(100)?;  // e.g., 'DocumentStorage', 'ImageStorage', 'Backup'
+
+            // Provider-Specific Settings
+            endpoint: String(500);  // S3 endpoint, Azure storage account, etc.
+            region: String(50)?;    // AWS region, Azure region
+            bucketName: String(255);
+
+            // Credentials (encrypted in real implementation)
+            @Sensitive
+            accessKey: String(500);  // AWS Access Key, Azure Storage Key, etc.
+
+            @Sensitive
+            secretKey: String(500);  // AWS Secret Key, etc.
+
+            // Configuration
+            useSsl: Boolean;
+            publicAccess: Boolean;
+            cdnEnabled: Boolean;
+            cdnUrl: String(500)?;
+
+            // Limits
+            maxFileSize: Integer;  // in bytes
+            allowedMimeTypes: String(1000)?;  // JSON array
+
+            // Status
+            isActive: Boolean;
+            isDefault: Boolean;
+
+            // Metadata
+            environment: EnvironmentType;
+            priority: Integer;
+
+            // Health Check
+            lastHealthCheck: Timestamp?;
+            healthStatus: String(50)?;
+
+            // Foreign Key
+            systemConfig: Association to SystemConfiguration;
+        }
+
+        // =============================================================================
+        // AUTHENTICATION PROVIDER CONFIGURATION
+        // =============================================================================
+
+        @GlobalScoped
+        entity AuthProvider : Auditable {
+            key ID: UUID;
+
+            // Basic Info
+            providerName: String(100);
+            providerType: AuthProviderType;
+
+            // OAuth2/OIDC Settings
+            issuer: String(500)?;
+            authorizationEndpoint: String(500)?;
+            tokenEndpoint: String(500)?;
+            userInfoEndpoint: String(500)?;
+            jwksUri: String(500)?;
+
+            // Client Configuration
+            clientId: String(255);
+
+            @Sensitive
+            clientSecret: String(500);
+
+            // Scopes and Claims
+            scopes: String(500)?;           // Space-separated scopes
+            requiredClaims: String(1000)?;  // JSON array
+
+            // Token Configuration
+            tokenValidationPolicy: String(1000)?;  // JSON configuration
+            tokenLifetime: Integer?;               // in seconds
+            refreshTokenEnabled: Boolean;
+
+            // SAML Settings (if applicable)
+            entityId: String(500)?;
+            ssoUrl: String(500)?;
+            certificatePath: String(500)?;
+
+            // LDAP Settings (if applicable)
+            ldapServer: String(255)?;
+            ldapPort: Integer?;
+            baseDn: String(500)?;
+            bindDn: String(500)?;
+
+            @Sensitive
+            bindPassword: String(500)?;
+
+            // Status
+            isActive: Boolean;
+            isPrimary: Boolean;  // Primary auth provider
+
+            // Metadata
+            environment: EnvironmentType;
+            priority: Integer;
+
+            // Health Check
+            lastHealthCheck: Timestamp?;
+            healthStatus: String(50)?;
+
+            // Foreign Key
+            systemConfig: Association to SystemConfiguration;
+        }
+
+        // =============================================================================
+        // CORE TABLE MAPPING
+        // =============================================================================
+
+        @GlobalScoped
+        entity CoreTableMapping : Auditable {
+            key ID: UUID;
+
+            // Table Type
+            tableType: String(50);  // 'User', 'Tenant', 'Role', 'Permission', etc.
+
+            // Database Location
+            databaseEndpoint: Association to DatabaseEndpoint;
+            schemaName: String(100);
+            tableName: String(100);
+
+            // Column Mappings (JSON format)
+            primaryKeyColumn: String(100);
+            columnMappings: String(2000);  // JSON: {"id": "user_id", "email": "user_email", ...}
+
+            // Query Configuration
+            selectQuery: String(2000)?;     // Custom SELECT query
+            insertQuery: String(2000)?;     // Custom INSERT query
+            updateQuery: String(2000)?;     // Custom UPDATE query
+            deleteQuery: String(2000)?;     // Custom DELETE query
+
+            // Relationships
+            foreignKeyMappings: String(2000)?;  // JSON array of FK definitions
+
+            // Status
+            isActive: Boolean;
+            version: String(20);
+
+            // Metadata
+            environment: EnvironmentType;
+            description: String(500)?;
+
+            // Foreign Key
+            systemConfig: Association to SystemConfiguration;
+        }
+
+        // =============================================================================
+        // CONFIGURATION HISTORY (Audit Trail)
+        // =============================================================================
+
+        @GlobalScoped
+        entity ConfigurationHistory : Auditable {
+            key ID: UUID;
+
+            configType: String(50);  // 'SystemConfig', 'DatabaseEndpoint', etc.
+            configId: UUID;          // ID of the changed configuration
+
+            action: String(50);      // 'Created', 'Updated', 'Deleted', 'Activated', 'Deactivated'
+            changeDescription: String(1000);
+
+            // Change Tracking
+            oldValue: String(4000)?;  // JSON snapshot before change
+            newValue: String(4000)?;  // JSON snapshot after change
+
+            changedAt: Timestamp;
+            changedBy: UUID;
+        }
+
+        // =============================================================================
+        // VALIDATION RULES
+        // =============================================================================
+
+        rule SystemConfigurationValidation for SystemConfiguration {
+            on before CREATE, UPDATE {
+                validate configName != null and configName != ''
+                    message 'Configuration name is required';
+
+                validate version != null
+                    message 'Version is required';
+
+                validate effectiveFrom != null
+                    message 'Effective from date is required';
+
+                validate not (isDefault == true and isActive == false)
+                    message 'Default configuration must be active';
+            }
+        }
+
+        rule DatabaseEndpointValidation for DatabaseEndpoint {
+            on before CREATE, UPDATE {
+                validate endpointName != null and endpointName != ''
+                    message 'Endpoint name is required';
+
+                validate host != null and host != ''
+                    message 'Host is required';
+
+                validate port > 0 and port < 65536
+                    message 'Port must be between 1 and 65535';
+
+                validate minPoolSize > 0 and minPoolSize <= maxPoolSize
+                    message 'Min pool size must be positive and not exceed max pool size';
+
+                validate connectionTimeout > 0
+                    message 'Connection timeout must be positive';
+            }
+        }
+
+        rule StorageProviderValidation for StorageProvider {
+            on before CREATE, UPDATE {
+                validate providerName != null and providerName != ''
+                    message 'Provider name is required';
+
+                validate endpoint != null and endpoint != ''
+                    message 'Endpoint is required';
+
+                validate bucketName != null and bucketName != ''
+                    message 'Bucket name is required';
+
+                validate maxFileSize > 0
+                    message 'Max file size must be positive';
+            }
+        }
+
+        rule AuthProviderValidation for AuthProvider {
+            on before CREATE, UPDATE {
+                validate providerName != null and providerName != ''
+                    message 'Provider name is required';
+
+                validate clientId != null and clientId != ''
+                    message 'Client ID is required';
+
+                validate clientSecret != null and clientSecret != ''
+                    message 'Client secret is required';
+            }
+        }
+
+        rule CoreTableMappingValidation for CoreTableMapping {
+            on before CREATE, UPDATE {
+                validate tableType != null and tableType != ''
+                    message 'Table type is required';
+
+                validate schemaName != null and schemaName != ''
+                    message 'Schema name is required';
+
+                validate tableName != null and tableName != ''
+                    message 'Table name is required';
+
+                validate primaryKeyColumn != null and primaryKeyColumn != ''
+                    message 'Primary key column is required';
+
+                validate columnMappings != null and columnMappings != ''
+                    message 'Column mappings are required';
+            }
+        }
+
+        // =============================================================================
+        // ACCESS CONTROL POLICIES
+        // =============================================================================
+
+        access control for SystemConfiguration {
+            grant READ to role 'SystemAdmin' at GLOBAL scope;
+            grant READ to role 'DevOps' at GLOBAL scope;
+            grant ALL to role 'SuperAdmin' at GLOBAL scope;
+
+            deny UPDATE to role 'Developer' at GLOBAL scope;
+            deny DELETE to role 'Developer' at GLOBAL scope;
+        }
+
+        access control for DatabaseEndpoint {
+            grant READ to role 'SystemAdmin' at GLOBAL scope;
+            grant READ to role 'DevOps' at GLOBAL scope;
+            grant ALL to role 'SuperAdmin' at GLOBAL scope;
+
+            // Sensitive fields
+            deny READ on password to role 'Developer';
+            deny READ on connectionString to role 'Developer';
+        }
+
+        access control for StorageProvider {
+            grant READ to role 'SystemAdmin' at GLOBAL scope;
+            grant READ to role 'DevOps' at GLOBAL scope;
+            grant ALL to role 'SuperAdmin' at GLOBAL scope;
+
+            // Sensitive fields
+            deny READ on accessKey to role 'Developer';
+            deny READ on secretKey to role 'Developer';
+        }
+
+        access control for AuthProvider {
+            grant READ to role 'SystemAdmin' at GLOBAL scope;
+            grant READ to role 'DevOps' at GLOBAL scope;
+            grant ALL to role 'SuperAdmin' at GLOBAL scope;
+
+            // Sensitive fields
+            deny READ on clientSecret to role 'Developer';
+            deny READ on bindPassword to role 'Developer';
+        }
+
+        access control for CoreTableMapping {
+            grant READ to role 'SystemAdmin' at GLOBAL scope;
+            grant READ to role 'DevOps' at GLOBAL scope;
+            grant READ to role 'Developer' at GLOBAL scope;
+            grant ALL to role 'SuperAdmin' at GLOBAL scope;
+        }
+
+        access control for ConfigurationHistory {
+            grant READ to role 'SystemAdmin' at GLOBAL scope;
+            grant READ to role 'Auditor' at GLOBAL scope;
+            grant ALL to role 'SuperAdmin' at GLOBAL scope;
+
+            deny CREATE to role 'SystemAdmin';
+            deny UPDATE to role 'SystemAdmin';
+            deny DELETE to role 'SystemAdmin';
+        }
+
+        // =============================================================================
+        // SERVICES (Optional - for future API integration)
+        // =============================================================================
+
+        service ConfigurationService {
+            operation GetActiveConfiguration(environment: EnvironmentType): SystemConfiguration;
+            operation GetDatabaseEndpoint(purpose: String): DatabaseEndpoint;
+            operation GetStorageProvider(purpose: String): StorageProvider;
+            operation GetAuthProvider(): AuthProvider;
+            operation GetCoreTableMapping(tableType: String): CoreTableMapping;
+            operation ValidateConfiguration(configId: UUID): Boolean;
+            operation ActivateConfiguration(configId: UUID): Boolean;
+            operation TestDatabaseConnection(endpointId: UUID): Boolean;
+            operation TestStorageProvider(providerId: UUID): Boolean;
+            operation TestAuthProvider(providerId: UUID): Boolean;
+        }
+
+    }
+}

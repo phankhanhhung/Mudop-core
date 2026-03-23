@@ -1,0 +1,10 @@
+{
+  "name": "BMMDL.Plugin.Webhook.Api",
+  "version": "1.0.0",
+  "description": "Webhook API endpoints and integration service",
+  "author": "BMMDL Team",
+  "entryAssembly": "BMMDL.Plugin.Webhook.Api.dll",
+  "dependencies": ["BMMDL.Plugin.Webhook"],
+  "bmmdlModules": [],
+  "autoLoad": true
+}

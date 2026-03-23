@@ -1,0 +1,192 @@
+// ============================================================
+// BMMDL Sample: HR - Master Data Entities
+// Domain: Human Resources - Core Employee Data
+// ============================================================
+
+namespace HR;
+
+// ============================================================
+// ORGANIZATIONAL STRUCTURE
+// ============================================================
+
+@Core.Description: 'Organizational unit/department'
+entity Department : Auditable, TenantAware {
+    key ID: UUID;
+    code: String(20);
+    name: String(100);
+    description: String(500);
+    costCenter: String(20);
+    isActive: Boolean default true;
+    
+    // Self-reference for hierarchy
+    parentDepartment: association [0,1] to Department;
+    
+    // Manager
+    manager: association [0,1] to Employee;
+    
+    // Child departments
+    subDepartments: composition [*] of Department;
+    
+    // Positions in this department
+    positions: composition [*] of Position;
+}
+
+@Core.Description: 'Job position definition'
+entity Position : Auditable {
+    key ID: UUID;
+    code: String(20);
+    title: String(100);
+    description: String(2000);
+    
+    // Salary range
+    minSalary: Salary;
+    maxSalary: Salary;
+    
+    // Grade/Level
+    gradeLevel: Integer;
+    
+    // Requirements
+    minExperienceYears: Integer default 0;
+    educationRequired: String(100);
+    
+    // Status
+    isActive: Boolean default true;
+    headcount: Integer default 1;
+    filledCount: Integer default 0;
+    
+    // Department
+    department: association [1] to Department;
+    
+    // Skills required
+    requiredSkills: composition [*] of PositionSkill;
+}
+
+@Core.Description: 'Skills required for a position'
+entity PositionSkill {
+    key ID: UUID;
+    skillName: String(100);
+    proficiencyRequired: Integer; // 1-5
+    isMandatory: Boolean default true;
+    
+    position: association [1] to Position;
+}
+
+// ============================================================
+// EMPLOYEE MASTER DATA
+// ============================================================
+
+@Core.Description: 'Employee master record'
+@Tenant.Aware: True
+@Company.Aware: True
+entity Employee : Auditable, TenantAware, CompanyAware, SoftDeletable, Versioned {
+    key ID: UUID;
+    
+    // Identification
+    employeeCode: EmployeeCode;
+    nationalID: NationalID;
+    taxID: TaxID;
+    
+    // Personal Info
+    firstName: String(50);
+    lastName: String(50);
+    middleName: String(50);
+    displayName: String(100);
+    dateOfBirth: Date;
+    gender: Gender;
+    maritalStatus: MaritalStatus default #Single;
+    nationality: String(50);
+    
+    // Contact
+    personalEmail: Email;
+    workEmail: Email;
+    personalPhone: Phone;
+    workPhone: Phone;
+    
+    // Address
+    currentAddress: Address;
+    permanentAddress: Address;
+    
+    // Emergency Contact
+    emergencyContact: EmergencyContact;
+    
+    // Employment
+    employmentType: EmploymentType default #FullTime;
+    employmentStatus: EmploymentStatus default #Active;
+    hireDate: Date;
+    confirmationDate: Date;
+    terminationDate: Date;
+    terminationReason: String(500);
+    
+    // Organization
+    position: association [1] to Position;
+    department: association [1] to Department;
+    reportingManager: association [0,1] to Employee;
+    
+    // Compensation
+    currentSalary: Salary;
+    currency: String(3) default 'USD';
+    
+    // Bank Details
+    bankName: String(100);
+    bankAccountNumber: BankAccount;
+    bankRoutingNumber: String(20);
+    
+    // Profile Photo
+    photoUrl: String(500);
+    
+    // Computed fields will be updated by rules
+    yearsOfService: Decimal(5, 2) default 0;
+    age: Integer default 0;
+    
+    // Relations
+    subordinates: association [*] to Employee on subordinates.reportingManager = $self;
+    salaryHistory: composition [*] of SalaryHistory;
+    leaveBalances: composition [*] of LeaveBalance;
+    performanceReviews: composition [*] of PerformanceReview;
+    trainings: composition [*] of EmployeeTraining;
+    skills: composition [*] of EmployeeSkill;
+    documents: composition [*] of EmployeeDocument;
+}
+
+@Core.Description: 'Employee salary history'
+entity SalaryHistory : Auditable {
+    key ID: UUID;
+    effectiveDate: Date;
+    endDate: Date;
+    salary: Salary;
+    currency: String(3);
+    reason: String(200);
+    approvedBy: UUID;
+    
+    employee: association [1] to Employee;
+}
+
+@Core.Description: 'Employee skill record'
+entity EmployeeSkill {
+    key ID: UUID;
+    skillName: String(100);
+    proficiencyLevel: Integer; // 1-5
+    yearsExperience: Decimal(3, 1);
+    lastUsedDate: Date;
+    certificationName: String(200);
+    certificationExpiry: Date;
+    
+    employee: association [1] to Employee;
+}
+
+@Core.Description: 'Employee document storage'
+entity EmployeeDocument : Auditable {
+    key ID: UUID;
+    documentType: String(50);
+    documentName: String(200);
+    fileUrl: String(500);
+    fileSize: Integer;
+    mimeType: String(100);
+    expiryDate: Date;
+    isVerified: Boolean default false;
+    verifiedBy: UUID;
+    verifiedAt: DateTime;
+    
+    employee: association [1] to Employee;
+}
+

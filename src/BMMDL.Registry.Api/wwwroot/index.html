@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BMMDL Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div id="app">
+        <!-- Auth Section -->
+        <section id="auth-section" class="auth-container">
+            <div class="auth-card">
+                <div class="auth-header">
+                    <h1 class="logo">BMMDL</h1>
+                    <p class="tagline">Business Meta Model Definition Language</p>
+                </div>
+
+                <!-- Login Form -->
+                <form id="login-form" class="auth-form active">
+                    <h2>Welcome Back</h2>
+                    <div class="form-group">
+                        <label for="login-email">Email</label>
+                        <input type="email" id="login-email" name="email" placeholder="you@example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" name="password" placeholder="••••••••" required>
+                    </div>
+                    <div id="login-error" class="error-message"></div>
+                    <button type="submit" class="btn btn-primary">Sign In</button>
+                    <p class="auth-switch">
+                        Don't have an account? <a href="#" id="show-signup">Create one</a>
+                    </p>
+                </form>
+
+                <!-- Signup Form -->
+                <form id="signup-form" class="auth-form">
+                    <h2>Create Account</h2>
+                    <div class="form-group">
+                        <label for="signup-name">Full Name</label>
+                        <input type="text" id="signup-name" name="name" placeholder="John Doe" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-email">Email</label>
+                        <input type="email" id="signup-email" name="email" placeholder="you@example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-password">Password</label>
+                        <input type="password" id="signup-password" name="password" placeholder="••••••••" required
+                            minlength="6">
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-confirm">Confirm Password</label>
+                        <input type="password" id="signup-confirm" name="confirmPassword" placeholder="••••••••"
+                            required>
+                    </div>
+                    <div id="signup-error" class="error-message"></div>
+                    <button type="submit" class="btn btn-primary">Create Account</button>
+                    <p class="auth-switch">
+                        Already have an account? <a href="#" id="show-login">Sign in</a>
+                    </p>
+                </form>
+            </div>
+        </section>
+
+        <!-- Dashboard Section -->
+        <section id="dashboard-section" class="dashboard hidden">
+            <nav class="sidebar">
+                <div class="sidebar-header">
+                    <h1 class="logo">BMMDL</h1>
+                </div>
+                <ul class="nav-menu">
+                    <li class="nav-item active" data-module="overview">
+                        <span class="nav-icon">📊</span>
+                        <span>Overview</span>
+                    </li>
+                    <li class="nav-item" data-module="tenants">
+                        <span class="nav-icon">🏢</span>
+                        <span>Tenants</span>
+                    </li>
+                    <li class="nav-item" data-module="modules">
+                        <span class="nav-icon">📦</span>
+                        <span>Modules</span>
+                    </li>
+                    <li class="nav-item" data-module="settings">
+                        <span class="nav-icon">⚙️</span>
+                        <span>Settings</span>
+                    </li>
+                </ul>
+                <div class="sidebar-footer">
+                    <div class="user-info">
+                        <span id="user-name">User</span>
+                        <span id="user-email" class="user-email"></span>
+                    </div>
+                    <button id="logout-btn" class="btn btn-outline">Sign Out</button>
+                </div>
+            </nav>
+
+            <main class="main-content">
+                <header class="content-header">
+                    <h2 id="module-title">Overview</h2>
+                </header>
+                <div id="module-content" class="content-body">
+                    <!-- Dynamic content loaded here -->
+                </div>
+            </main>
+        </section>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

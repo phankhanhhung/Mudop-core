@@ -1,0 +1,109 @@
+// ============================================================
+// BMMDL Sample: Views and Services
+// ============================================================
+
+namespace ECommerce;
+
+// Sequence definitions
+sequence OrderNumberSeq {
+    pattern: 'ORD-{company}-{year}{month}-{seq:5}';
+    start: 1;
+    padding: 5;
+    scope: company;
+    reset on monthly;
+}
+
+sequence CustomerCodeSeq {
+    pattern: 'CUS-{company}-{seq:6}';
+    scope: company;
+    reset on never;
+}
+
+sequence InvoiceNumberSeq {
+    pattern: 'INV/{company}/{fy}-{seq:6}';
+    scope: company;
+    reset on fiscal;
+}
+
+// View: Order Summary
+@Core.Description: 'Summary view for orders with customer info'
+define view OrderSummary as
+    select
+        ord.ID,
+        ord.orderNumber,
+        ord.orderDate,
+        ord.status,
+        ord.totalAmount,
+        cust.customerCode,
+        cust.name,
+        cust.email,
+        ord.createdAt,
+        ord.modifiedAt
+    from Order as ord
+    inner join Customer as cust on ord.customerID = cust.ID
+    where ord.isDeleted = false
+
+// View: Customer Analytics
+define view CustomerAnalytics as
+    select
+        cust.ID,
+        cust.customerCode,
+        cust.name,
+        cust.customerType,
+        cust.creditLimit,
+        count(ord.ID),
+        sum(ord.totalAmount),
+        avg(ord.totalAmount),
+        max(ord.orderDate)
+    from Customer as cust
+    left join Order as ord on ord.customerID = cust.ID and ord.status != #Cancelled
+    where cust.isDeleted = false
+    group by cust.ID, cust.customerCode, cust.name, cust.customerType, cust.creditLimit
+
+// View: Low Stock Products
+define view LowStockProducts as
+    select
+        prod.ID,
+        prod.productCode,
+        prod.name,
+        prod.stockQuantity,
+        prod.reorderLevel,
+        cat.name
+    from Product as prod
+    left join ProductCategory as cat on prod.categoryID = cat.ID
+    where prod.isActive = true
+      and prod.stockQuantity <= prod.reorderLevel
+
+// Service: Order Management API
+@Core.Description: 'Order management service'
+service OrderService {
+    // Exposed entities
+    entity Orders as Order;
+    entity Customers as Customer;
+    entity Products as Product;
+    
+    // Views
+    entity OrderSummaries as OrderSummary;
+    entity CustomerStats as CustomerAnalytics;
+    
+    // Actions
+    action confirmOrder(orderId: UUID) returns Order;
+    action cancelOrder(orderId: UUID, reason: String) returns Order;
+    action shipOrder(orderId: UUID, trackingNumber: String) returns Order;
+    
+    // Functions
+    function getOrdersByStatus(status: OrderStatus) returns Order;
+    function getCustomerOrders(customerId: UUID) returns Order;
+    function calculateShipping(orderId: UUID, method: String) returns Decimal;
+}
+
+// Service: Reporting API
+service ReportingService {
+    entity SalesReport as SalesByPeriod;
+    entity CustomerReport as CustomerAnalytics;
+    entity InventoryAlert as LowStockProducts;
+    
+    function getSalesSummary(yr: Integer, mo: Integer) returns SalesSummaryResult;
+    function getTopProducts(lim: Integer) returns Product;
+    function getTopCustomers(lim: Integer) returns Customer;
+}

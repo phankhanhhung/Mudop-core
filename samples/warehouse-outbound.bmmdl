@@ -1,0 +1,1178 @@
+﻿// ============================================================
+// BMMDL Sample: Warehouse - Outbound Operations
+// Advanced features: events, computed fields, wave planning, actions
+// ============================================================
+
+namespace Warehouse;
+
+using Common;
+
+// ============================================================
+// DOMAIN EVENTS - OUTBOUND
+// ============================================================
+
+event OutboundOrderReleased {
+    orderId: UUID;
+    orderNumber: String(50);
+    customerId: UUID;
+    totalLines: Integer;
+    totalQuantity: Decimal(18, 3);
+    releasedAt: DateTime;
+}
+
+event WaveCreated {
+    waveId: UUID;
+    waveNumber: String(50);
+    orderCount: Integer;
+    lineCount: Integer;
+    createdAt: DateTime;
+}
+
+event WaveReleased {
+    waveId: UUID;
+    waveNumber: String(50);
+    pickTaskCount: Integer;
+    releasedBy: UUID;
+    releasedAt: DateTime;
+}
+
+event PickTaskAssigned {
+    taskId: UUID;
+    pickerId: UUID;
+    itemCount: Integer;
+    assignedAt: DateTime;
+}
+
+event PickCompleted {
+    taskId: UUID;
+    pickerId: UUID;
+    pickedQuantity: Decimal(18, 3);
+    shortQuantity: Decimal(18, 3);
+    completedAt: DateTime;
+}
+
+event PackingCompleted {
+    packingId: UUID;
+    orderId: UUID;
+    cartonCount: Integer;
+    totalWeight: Decimal(12, 3);
+    completedAt: DateTime;
+}
+
+event ShipmentDispatched {
+    shipmentId: UUID;
+    shipmentNumber: String(50);
+    carrier: String(100);
+    trackingNumber: String(100);
+    dispatchedAt: DateTime;
+}
+
+// ============================================================
+// OUTBOUND ORDER (Fulfillment Order)
+// ============================================================
+
+@Core.Description: 'Outbound Order for Warehouse Fulfillment'
+@Tenant.Aware: true
+@Company.Aware: true
+entity OutboundOrder : Auditable {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Core.Immutable
+    @Sequence.Pattern: 'OBO-{company}-{year}{month}-{seq:6}'
+    @Sequence.Scope: #Company
+    @Sequence.ResetOn: #Monthly
+    orderNumber: String(50);
+    
+    orderType: OutboundOrderType;
+    
+    // Source document
+    salesOrderRef: String(50);
+    transferOrderRef: String(50);
+    returnAuthRef: String(50);
+    
+    // Customer/Destination
+    customer: association [0,1] to Customer;
+    
+    @Core.Label: 'Ship To Name'
+    shipToName: String(200);
+    
+    @Core.Label: 'Ship To Address'
+    shipToAddress: String(500);
+    
+    shipToCity: String(100);
+    shipToState: String(100);
+    shipToPostalCode: String(20);
+    shipToCountry: String(3);
+    
+    shipToPhone: String(30);
+    shipToEmail: String(100);
+    
+    // Warehouse
+    @Core.Mandatory: true
+    warehouse: association [1] to WarehouseMaster;
+    
+    // Dates
+    @Core.Mandatory: true
+    orderDate: Date default $today;
+    
+    @Core.Label: 'Required Ship Date'
+    requiredShipDate: Date;
+    
+    @Core.Label: 'Promised Delivery Date'
+    promisedDeliveryDate: Date;
+    
+    @Core.Label: 'Actual Ship Date'
+    actualShipDate: Date;
+    
+    // Priority & Service
+    priority: OrderPriority default #Normal;
+    
+    @Core.Label: 'Shipping Method'
+    shippingMethod: String(50);
+    
+    @Core.Label: 'Service Level'
+    serviceLevel: ServiceLevel default #Standard;
+    
+    // Carrier
+    carrier: String(100);
+    carrierService: String(100);
+    
+    // Order metrics
+    @Core.Computed
+    virtual lineCount: Integer computed = count(lines);
+    
+    @Core.Computed
+    virtual totalSkus: Integer computed = count(distinct lines.item);
+    
+    @Core.Computed
+    virtual totalOrderedQty: Decimal(18, 3) computed = sum(lines.orderedQty);
+    
+    @Core.Computed
+    virtual totalAllocatedQty: Decimal(18, 3) computed = sum(lines.allocatedQty);
+    
+    @Core.Computed
+    virtual totalPickedQty: Decimal(18, 3) computed = sum(lines.pickedQty);
+    
+    @Core.Computed
+    virtual totalShippedQty: Decimal(18, 3) computed = sum(lines.shippedQty);
+    
+    // Fulfillment progress
+    virtual allocationPercent: Decimal(5, 2) computed = 
+        case when totalOrderedQty > 0 
+             then round((totalAllocatedQty * 100.0) / totalOrderedQty, 2)
+             else 0
+        end;
+    
+    virtual pickPercent: Decimal(5, 2) computed = 
+        case when totalAllocatedQty > 0 
+             then round((totalPickedQty * 100.0) / totalAllocatedQty, 2)
+             else 0
+        end;
+    
+    virtual isFullyAllocated: Boolean computed = allocationPercent >= 100;
+    virtual isFullyPicked: Boolean computed = pickPercent >= 100;
+    virtual isShortShip: Boolean computed = totalShippedQty < totalOrderedQty and status = #Shipped;
+    
+    // Late check
+    virtual isLate: Boolean computed = 
+        requiredShipDate is not null and actualShipDate is not null and actualShipDate > requiredShipDate;
+    
+    virtual daysLate: Integer computed = 
+        case when isLate then DATEDIFF('day', requiredShipDate, actualShipDate) else 0 end;
+    
+    // Weight & Volume
+    @Core.Computed
+    virtual totalWeightKg: Decimal(12, 3) computed = sum(lines.lineWeightKg);
+    
+    @Core.Computed
+    virtual totalVolumeCubicM: Decimal(12, 4) computed = sum(lines.lineVolumeCubicM);
+    
+    // Wave
+    wave: association [0,1] to PickWave;
+    
+    // Status
+    status: OutboundOrderStatus default #Open;
+    
+    releasedAt: Timestamp;
+    allocatedAt: Timestamp;
+    
+    // Lines
+    lines: composition [*] of OutboundOrderLine;
+    
+    remarks: String(2000);
+    
+    // ========================================
+    // INDEXES
+    // ========================================
+    
+    unique index idx_outbound_number on (orderNumber);
+    index idx_outbound_customer on (customer);
+    index idx_outbound_warehouse on (warehouse);
+    index idx_outbound_status on (status);
+    index idx_outbound_required_date on (requiredShipDate);
+    index idx_outbound_priority on (priority);
+    index idx_outbound_sales_ref on (salesOrderRef);
+    index idx_outbound_wave on (wave);
+    
+    // ========================================
+    // CONSTRAINTS
+    // ========================================
+    
+    constraint chk_status check (status in (#Open, #Released, #Allocated, #Waved, #Picking, #Picked, #Packing, #Packed, #Shipped, #Completed, #Cancelled, #OnHold));
+    constraint chk_dates check (promisedDeliveryDate >= requiredShipDate or promisedDeliveryDate is null);
+    constraint fk_warehouse foreign key (warehouse) references WarehouseMaster (ID);
+    
+    // ========================================
+    // ENHANCED ACTIONS
+    // ========================================
+    
+    action release()
+        requires status = #Open
+        requires count(lines) > 0
+        ensures status = #Released
+        modifies releasedAt = $now
+        emits OutboundOrderReleased;
+    
+    action allocate()
+        requires status = #Released
+        requires warehouse.isShippingActive = true
+        ensures status = #Allocated
+        modifies allocatedAt = $now;
+    
+    action addToWave(waveId: UUID)
+        requires status = #Allocated
+        ensures status = #Waved
+        modifies wave = waveId;
+    
+    action removeFromWave()
+        requires status = #Waved
+        ensures status = #Allocated
+        modifies wave = null;
+    
+    action putOnHold(reason: String)
+        requires status != #Shipped
+        requires status != #Completed
+        ensures status = #OnHold
+        modifies remarks = reason;
+    
+    action releaseHold()
+        requires status = #OnHold
+        ensures status = #Allocated;
+    
+    action markShipped(shipDate: Date)
+        requires status = #Packed
+        requires isFullyPicked = true
+        ensures status = #Shipped
+        modifies actualShipDate = shipDate
+        emits ShipmentDispatched;
+    
+    action cancelOrder(reason: String)
+        requires status in (#Open, #Released, #Allocated)
+        ensures status = #Cancelled
+        modifies remarks = reason;
+}
+
+enum OutboundOrderType {
+    @Core.Label: 'Sales Order'
+    SalesOrder;
+    @Core.Label: 'Stock Transfer'
+    Transfer;
+    @Core.Label: 'Vendor Return'
+    VendorReturn;
+    @Core.Label: 'Sample Shipment'
+    Sample;
+    @Core.Label: 'Internal Request'
+    InternalRequest;
+    @Core.Label: 'Cross-Dock'
+    CrossDock;
+}
+
+enum OutboundOrderStatus {
+    Open;
+    Released;
+    Allocated;
+    Waved;
+    Picking;
+    Picked;
+    Packing;
+    Packed;
+    Shipped;
+    Completed;
+    Cancelled;
+    OnHold;
+}
+
+enum OrderPriority {
+    Low;
+    Normal;
+    High;
+    Rush;
+    Emergency;
+}
+
+enum ServiceLevel {
+    Economy;
+    Standard;
+    Express;
+    NextDay;
+    SameDay;
+}
+
+// ============================================================
+// OUTBOUND ORDER LINE
+// ============================================================
+
+entity OutboundOrderLine {
+    key ID: UUID;
+    
+    lineNumber: Integer;
+    
+    @Core.Mandatory: true
+    item: association [1] to Item;
+    
+    @Core.Mandatory: true
+    @Core.Label: 'Ordered Quantity'
+    orderedQty: Quantity;
+    
+    uom: UnitOfMeasure;
+    
+    // Allocation
+    @Core.Label: 'Allocated Quantity'
+    allocatedQty: Quantity default 0;
+    
+    @Core.Label: 'Picked Quantity'
+    pickedQty: Quantity default 0;
+    
+    @Core.Label: 'Packed Quantity'
+    packedQty: Quantity default 0;
+    
+    @Core.Label: 'Shipped Quantity'
+    shippedQty: Quantity default 0;
+    
+    @Core.Label: 'Short Quantity'
+    shortQty: Quantity default 0;
+    
+    @Core.Label: 'Cancelled Quantity'
+    cancelledQty: Quantity default 0;
+    
+    // Computed progress
+    virtual pendingQty: Quantity computed = orderedQty - allocatedQty - cancelledQty;
+    virtual isFullyAllocated: Boolean computed = allocatedQty >= orderedQty - cancelledQty;
+    virtual isFullyPicked: Boolean computed = pickedQty >= allocatedQty;
+    virtual isShort: Boolean computed = shortQty > 0;
+    
+    // Weight & Volume
+    @Core.Label: 'Unit Weight (kg)'
+    unitWeightKg: Decimal(10, 3);
+    
+    @Core.Label: 'Unit Volume (mÂ³)'
+    unitVolumeCubicM: Decimal(10, 6);
+    
+    virtual lineWeightKg: Decimal(12, 3) computed = orderedQty * unitWeightKg;
+    virtual lineVolumeCubicM: Decimal(12, 6) computed = orderedQty * unitVolumeCubicM;
+    
+    // Lot requirements
+    @Core.Label: 'Required Batch'
+    requiredBatch: String(50);
+    
+    @Core.Label: 'Required Serial'
+    requiredSerial: String(100);
+    
+    @Core.Label: 'Min Days to Expiry'
+    minDaysToExpiry: Integer;
+    
+    // Allocation details (for single allocation)
+    allocatedBatch: String(50);
+    allocatedSerial: String(100);
+    allocatedZone: association [0,1] to WarehouseZoneMaster;
+    allocatedBin: association [0,1] to BinLocationMaster;
+    
+    status: OutboundLineStatus default #Open;
+    
+    remarks: String(500);
+    
+    // ========================================
+    // INDEXES & CONSTRAINTS
+    // ========================================
+    
+    index idx_oline_item on (item);
+    index idx_oline_status on (status);
+    index idx_oline_batch on (allocatedBatch);
+    
+    constraint chk_qty_positive check (orderedQty > 0);
+    constraint chk_allocated_qty check (allocatedQty <= orderedQty);
+    constraint chk_picked_qty check (pickedQty <= allocatedQty);
+}
+
+enum OutboundLineStatus {
+    Open;
+    Allocated;
+    Picking;
+    Picked;
+    ShortPicked;
+    Packed;
+    Shipped;
+    Cancelled;
+}
+
+// ============================================================
+// PICK WAVE (Wave Planning)
+// ============================================================
+
+@Core.Description: 'Pick Wave for Batch Processing'
+@Tenant.Aware: true
+entity PickWave : Auditable {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Sequence.Pattern: 'WV-{date}-{seq:4}'
+    waveNumber: String(50);
+    
+    @Core.Mandatory: true
+    waveDate: Date default $today;
+    
+    waveType: WaveType;
+    
+    // Warehouse
+    @Core.Mandatory: true
+    warehouse: association [1] to WarehouseMaster;
+    
+    // Wave planning criteria
+    @Core.Label: 'Carrier Filter'
+    carrierFilter: String(100);
+    
+    @Core.Label: 'Zone Filter'
+    zoneFilter: String(100);
+    
+    @Core.Label: 'Service Level Filter'
+    serviceLevelFilter: ServiceLevel;
+    
+    @Core.Label: 'Cutoff Time'
+    cutoffTime: Timestamp;
+    
+    // Wave metrics
+    @Core.Computed
+    virtual orderCount: Integer computed = count(orders);
+    
+    @Core.Computed
+    virtual totalLines: Integer computed = sum(orders.lineCount);
+    
+    @Core.Computed
+    virtual totalSkus: Integer computed = count(distinct orders.lines.item);
+    
+    @Core.Computed
+    virtual totalQuantity: Decimal(18, 3) computed = sum(orders.totalOrderedQty);
+    
+    @Core.Computed
+    virtual totalPickedQty: Decimal(18, 3) computed = sum(orders.totalPickedQty);
+    
+    virtual pickProgress: Decimal(5, 2) computed = 
+        case when totalQuantity > 0 
+             then round((totalPickedQty * 100.0) / totalQuantity, 2)
+             else 0
+        end;
+    
+    virtual isFullyPicked: Boolean computed = pickProgress >= 100;
+    
+    // Pick tasks
+    @Core.Computed
+    virtual pickTaskCount: Integer computed = count(pickTasks);
+    
+    @Core.Computed
+    virtual completedTaskCount: Integer computed = count(pickTasks where status = #Completed);
+    
+    virtual taskProgress: Decimal(5, 2) computed = 
+        case when pickTaskCount > 0 
+             then round((completedTaskCount * 100.0) / pickTaskCount, 2)
+             else 0
+        end;
+    
+    // Timing
+    plannedStartTime: Timestamp;
+    plannedEndTime: Timestamp;
+    actualStartTime: Timestamp;
+    actualEndTime: Timestamp;
+    
+    @Core.Computed
+    virtual plannedDurationMinutes: Integer computed = 
+        case when plannedEndTime is not null and plannedStartTime is not null
+             then DATEDIFF('minute', plannedStartTime, plannedEndTime)
+             else null
+        end;
+    
+    @Core.Computed
+    virtual actualDurationMinutes: Integer computed = 
+        case when actualEndTime is not null and actualStartTime is not null
+             then DATEDIFF('minute', actualStartTime, actualEndTime)
+             else null
+        end;
+    
+    // Status
+    status: WaveStatus default #Draft;
+    
+    releasedAt: Timestamp;
+    releasedBy: String(100);
+    
+    completedAt: Timestamp;
+    
+    // Orders in wave
+    orders: association [*] to OutboundOrder on OutboundOrder.wave = ID;
+    
+    // Pick tasks
+    pickTasks: composition [*] of PickTask;
+    
+    remarks: String(2000);
+    
+    // ========================================
+    // INDEXES
+    // ========================================
+    
+    unique index idx_wave_number on (waveNumber);
+    index idx_wave_date on (waveDate);
+    index idx_wave_warehouse on (warehouse);
+    index idx_wave_status on (status);
+    index idx_wave_type on (waveType);
+    
+    // ========================================
+    // CONSTRAINTS
+    // ========================================
+    
+    constraint chk_status check (status in (#Draft, #Released, #InProgress, #Completed, #Cancelled));
+    constraint fk_warehouse foreign key (warehouse) references WarehouseMaster (ID);
+    
+    // ========================================
+    // ACTIONS
+    // ========================================
+    
+    action addOrder(orderId: UUID)
+        requires status = #Draft;
+    
+    action removeOrder(orderId: UUID)
+        requires status = #Draft;
+    
+    action releaseWave()
+        requires status = #Draft
+        requires orderCount > 0
+        ensures status = #Released
+        modifies releasedAt = $now
+        emits WaveReleased;
+    
+    action startPicking()
+        requires status = #Released
+        ensures status = #InProgress
+        modifies actualStartTime = $now;
+    
+    action completeWave()
+        requires status = #InProgress
+        requires isFullyPicked = true
+        ensures status = #Completed
+        modifies actualEndTime = $now
+        modifies completedAt = $now;
+    
+    action cancelWave(reason: String)
+        requires status = #Draft or status = #Released
+        ensures status = #Cancelled
+        modifies remarks = reason;
+}
+
+enum WaveType {
+    @Core.Label: 'Order Pick'
+    OrderPick;
+    @Core.Label: 'Batch Pick'
+    BatchPick;
+    @Core.Label: 'Zone Pick'
+    ZonePick;
+    @Core.Label: 'Cluster Pick'
+    ClusterPick;
+    @Core.Label: 'Wave Pick'
+    WavePick;
+}
+
+enum WaveStatus {
+    Draft;
+    Released;
+    InProgress;
+    Completed;
+    Cancelled;
+}
+
+// ============================================================
+// PICK TASK
+// ============================================================
+
+@Core.Description: 'Pick Task for Warehouse Pickers'
+entity PickTask : Auditable {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Sequence.Pattern: 'PICK-{date}-{seq:5}'
+    taskNumber: String(50);
+    
+    taskDate: Date default $today;
+    
+    // Pick type
+    pickType: PickType;
+    
+    // Item to pick
+    @Core.Mandatory: true
+    item: association [1] to Item;
+    
+    @Core.Mandatory: true
+    quantity: Quantity;
+    
+    uom: UnitOfMeasure;
+    
+    // Location
+    @Core.Mandatory: true
+    pickZone: association [1] to WarehouseZoneMaster;
+    
+    @Core.Mandatory: true
+    pickBin: association [1] to BinLocationMaster;
+    
+    // Lot tracking
+    batchNumber: BatchNumber;
+    serialNumber: SerialNumber;
+    
+    // Destination (for batch/zone pick)
+    destinationZone: association [0,1] to WarehouseZoneMaster;
+    destinationBin: association [0,1] to BinLocationMaster;
+    
+    // Source order line
+    outboundOrderLine: association [0,1] to OutboundOrderLine;
+    
+    // Actual pick
+    pickedQuantity: Quantity default 0;
+    shortQuantity: Quantity default 0;
+    damagedQuantity: Quantity default 0;
+    
+    // Computed
+    virtual pendingQuantity: Quantity computed = quantity - pickedQuantity - shortQuantity;
+    virtual isComplete: Boolean computed = pendingQuantity <= 0;
+    virtual shortPercent: Decimal(5, 2) computed = 
+        case when quantity > 0 
+             then round((shortQuantity * 100.0) / quantity, 2)
+             else 0
+        end;
+    
+    // Assignment
+    assignedTo: String(100);
+    assignedAt: Timestamp;
+    
+    priority: TaskPriority default #Normal;
+    
+    // Pick sequence for route optimization
+    pickSequence: Integer default 999;
+    
+    // Timing
+    startedAt: Timestamp;
+    completedAt: Timestamp;
+    
+    @Core.Computed
+    virtual durationMinutes: Integer computed = 
+        case when completedAt is not null and startedAt is not null
+             then DATEDIFF('minute', startedAt, completedAt)
+             else null
+        end;
+    
+    // Status
+    status: PickTaskStatus default #Open;
+    
+    completedBy: String(100);
+    
+    shortReason: String(200);
+    remarks: String(500);
+    
+    // ========================================
+    // INDEXES
+    // ========================================
+    
+    unique index idx_pick_task_number on (taskNumber);
+    index idx_pick_assigned on (assignedTo);
+    index idx_pick_status on (status);
+    index idx_pick_item on (item);
+    index idx_pick_zone on (pickZone);
+    index idx_pick_bin on (pickBin);
+    index idx_pick_sequence on (pickSequence);
+    index idx_pick_priority on (priority);
+    
+    // ========================================
+    // CONSTRAINTS
+    // ========================================
+    
+    constraint chk_status check (status in (#Open, #Assigned, #InProgress, #Completed, #ShortPicked, #Cancelled));
+    constraint chk_qty check (quantity > 0);
+    constraint chk_picked check (pickedQuantity >= 0);
+    constraint chk_short check (shortQuantity >= 0);
+    
+    // ========================================
+    // ACTIONS
+    // ========================================
+    
+    action assign(userId: String)
+        requires status = #Open
+        ensures status = #Assigned
+        modifies assignedTo = userId
+        modifies assignedAt = $now
+        emits PickTaskAssigned;
+    
+    action startTask()
+        requires status = #Assigned
+        ensures status = #InProgress
+        modifies startedAt = $now;
+    
+    action completeFull()
+        requires status = #InProgress
+        ensures status = #Completed
+        modifies pickedQuantity = quantity
+        modifies shortQuantity = 0
+        modifies completedAt = $now
+        emits PickCompleted;
+    
+    action completePartial(pickedQty: Decimal, shortQty: Decimal, reason: String)
+        requires status = #InProgress
+        requires pickedQty + shortQty = quantity
+        ensures status = #ShortPicked
+        modifies pickedQuantity = pickedQty
+        modifies shortQuantity = shortQty
+        modifies shortReason = reason
+        modifies completedAt = $now
+        emits PickCompleted;
+    
+    action cancelTask(reason: String)
+        requires status in (#Open, #Assigned)
+        ensures status = #Cancelled
+        modifies remarks = reason;
+}
+
+enum PickType {
+    SingleOrder;
+    BatchPick;
+    ZonePick;
+    ClusterPick;
+    Replenishment;
+}
+
+enum PickTaskStatus {
+    Open;
+    Assigned;
+    InProgress;
+    Completed;
+    ShortPicked;
+    Cancelled;
+}
+
+// ============================================================
+// PACKING
+// ============================================================
+
+@Core.Description: 'Packing Work Order'
+@Tenant.Aware: true
+entity PackingOrder : Auditable {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Sequence.Pattern: 'PACK-{date}-{seq:4}'
+    packingNumber: String(50);
+    
+    packingDate: Date default $today;
+    
+    // Source order
+    @Core.Mandatory: true
+    outboundOrder: association [1] to OutboundOrder;
+    
+    // Packing station
+    packingStation: String(50);
+    
+    // Cartons/Packages
+    cartons: composition [*] of PackingCarton;
+    
+    @Core.Computed
+    virtual cartonCount: Integer computed = count(cartons);
+    
+    @Core.Computed
+    virtual totalWeightKg: Decimal(12, 3) computed = sum(cartons.grossWeightKg);
+    
+    @Core.Computed
+    virtual totalVolumeCubicM: Decimal(10, 4) computed = sum(cartons.volumeCubicM);
+    
+    // Packer
+    packedBy: String(100);
+    
+    // Timing
+    startedAt: Timestamp;
+    completedAt: Timestamp;
+    
+    @Core.Computed
+    virtual durationMinutes: Integer computed = 
+        case when completedAt is not null and startedAt is not null
+             then DATEDIFF('minute', startedAt, completedAt)
+             else null
+        end;
+    
+    // Status
+    status: PackingStatus default #Open;
+    
+    remarks: String(500);
+    
+    // ========================================
+    // INDEXES & CONSTRAINTS
+    // ========================================
+    
+    unique index idx_packing_number on (packingNumber);
+    index idx_packing_order on (outboundOrder);
+    index idx_packing_status on (status);
+    
+    constraint chk_status check (status in (#Open, #InProgress, #Completed, #Cancelled));
+    
+    // ========================================
+    // ACTIONS
+    // ========================================
+    
+    action startPacking()
+        requires status = #Open
+        ensures status = #InProgress
+        modifies startedAt = $now;
+    
+    action completePacking()
+        requires status = #InProgress
+        requires cartonCount > 0
+        ensures status = #Completed
+        modifies completedAt = $now
+        emits PackingCompleted;
+}
+
+enum PackingStatus {
+    Open;
+    InProgress;
+    Completed;
+    Cancelled;
+}
+
+entity PackingCarton {
+    key ID: UUID;
+    
+    cartonNumber: Integer;
+    
+    @Core.Label: 'Tracking Number'
+    trackingNumber: String(100);
+    
+    @Core.Label: 'SSCC'
+    sscc: String(20);
+    
+    // Dimensions
+    @Core.Label: 'Length (cm)'
+    lengthCm: Decimal(8, 2);
+    
+    @Core.Label: 'Width (cm)'
+    widthCm: Decimal(8, 2);
+    
+    @Core.Label: 'Height (cm)'
+    heightCm: Decimal(8, 2);
+    
+    @Core.Computed
+    virtual volumeCubicM: Decimal(10, 6) computed = (lengthCm * widthCm * heightCm) / 1000000;
+    
+    // Weight
+    @Core.Label: 'Net Weight (kg)'
+    netWeightKg: Decimal(10, 3);
+    
+    @Core.Label: 'Packaging Weight (kg)'
+    packagingWeightKg: Decimal(10, 3) default 0.5;
+    
+    @Core.Computed
+    virtual grossWeightKg: Decimal(10, 3) computed = netWeightKg + packagingWeightKg;
+    
+    // Contents
+    contents: composition [*] of PackingCartonLine;
+    
+    @Core.Computed
+    virtual itemCount: Integer computed = count(contents);
+    
+    // Shipping label
+    labelPrinted: Boolean default false;
+    labelPrintedAt: Timestamp;
+    
+    remarks: String(200);
+    
+    // ========================================
+    // INDEXES
+    // ========================================
+    
+    index idx_carton_tracking on (trackingNumber);
+    index idx_carton_sscc on (sscc);
+}
+
+entity PackingCartonLine {
+    key ID: UUID;
+    
+    item: association [1] to Item;
+    quantity: Quantity;
+    uom: UnitOfMeasure;
+    batchNumber: BatchNumber;
+    serialNumber: SerialNumber;
+    
+    // Source pick
+    pickTaskId: UUID;
+    outboundOrderLineId: UUID;
+}
+
+// ============================================================
+// OUTBOUND SERVICE
+// ============================================================
+
+@Core.Description: 'Warehouse Outbound Operations Service'
+service OutboundService {
+    
+    // Order operations
+    action createOutboundOrder(
+        customerId: UUID,
+        warehouseId: UUID,
+        orderType: OutboundOrderType
+    ) returns OutboundOrder;
+    
+    action releaseOrdersForFulfillment(orderIds: array<UUID>) returns Integer
+        emits OutboundOrderReleased;
+    
+    action allocateOrders(orderIds: array<UUID>) returns AllocationResult;
+    
+    // Wave planning
+    action createWave(
+        warehouseId: UUID,
+        waveType: WaveType,
+        cutoffTime: Timestamp
+    ) returns PickWave
+        emits WaveCreated;
+    
+    action autoAddOrdersToWave(waveId: UUID, criteria: WaveCriteria) returns Integer;
+    
+    action generatePickTasks(waveId: UUID) returns Integer;
+    
+    action optimizePickRoute(waveId: UUID) returns PickWave;
+    
+    // Pick operations
+    action assignPickTasks(taskIds: array<UUID>, pickerId: String) returns Integer;
+    
+    action getNextPickTask(pickerId: String, warehouseId: UUID) returns PickTask;
+    
+    // Packing operations
+    action createPackingOrder(outboundOrderId: UUID) returns PackingOrder;
+    
+    action printShippingLabels(packingOrderId: UUID) returns Integer;
+    
+    // Shipping
+    action createShipment(packingOrderIds: array<UUID>) returns OutboundShipment;
+    
+    action getRateQuote(orderId: UUID) returns array<CarrierRate>;
+    
+    // Queries
+    function getOrdersToRelease(warehouseId: UUID) returns OutboundOrder;
+    function getOrdersToAllocate(warehouseId: UUID) returns OutboundOrder;
+    function getOrdersToWave(warehouseId: UUID, cutoffTime: Timestamp) returns OutboundOrder;
+    function getActiveWaves(warehouseId: UUID) returns PickWave;
+    function getPickerWorkload(pickerId: String) returns PickerWorkload;
+    
+    // Analytics
+    function getPickingProductivity(warehouseId: UUID, dateFrom: Date, dateTo: Date) returns PickingMetrics;
+    function getWavePerformance(waveId: UUID) returns WavePerformanceReport;
+    function getShortPickReport(warehouseId: UUID, dateFrom: Date, dateTo: Date) returns ShortPickReport;
+}
+
+// ============================================================
+// SERVICE VALUE OBJECTS
+// ============================================================
+
+type AllocationResult : {
+    totalOrders: Integer;
+    fullyAllocated: Integer;
+    partiallyAllocated: Integer;
+    notAllocated: Integer;
+    errors: array<AllocationError>;
+}
+
+type AllocationError : {
+    orderId: UUID;
+    orderNumber: String(50);
+    itemId: UUID;
+    itemCode: String(50);
+    requestedQty: Decimal(18, 3);
+    availableQty: Decimal(18, 3);
+    errorMessage: String(500);
+}
+
+type WaveCriteria : {
+    carrierFilter: String(100);
+    serviceLevelFilter: ServiceLevel;
+    zoneFilter: String(100);
+    priorityFilter: OrderPriority;
+    maxOrders: Integer;
+    maxLines: Integer;
+}
+
+type CarrierRate : {
+    carrier: String(100);
+    serviceName: String(100);
+    rate: Decimal(12, 2);
+    currency: String(3);
+    estimatedDays: Integer;
+    cutoffTime: Time
+}
+
+type PickerWorkload : {
+    pickerId: String(100);
+    activeTasks: Integer;
+    pendingTasks: Integer;
+    completedToday: Integer;
+    averageTimeMinutes: Decimal(8, 2);
+}
+
+type PickingMetrics : {
+    warehouseId: UUID;
+    periodStart: Date;
+    periodEnd: Date;
+    totalTasksCompleted: Integer;
+    totalLinesPicked: Integer;
+    totalQuantityPicked: Decimal(18, 3);
+    averagePickTimeMinutes: Decimal(8, 2);
+    linesPerHour: Decimal(8, 2);
+    accuracyPercent: Decimal(5, 2);
+    shortPickPercent: Decimal(5, 2);
+}
+
+type WavePerformanceReport : {
+    waveId: UUID;
+    waveNumber: String(50);
+    orderCount: Integer;
+    lineCount: Integer;
+    totalQuantity: Decimal(18, 3);
+    plannedDurationMinutes: Integer;
+    actualDurationMinutes: Integer;
+    efficiencyPercent: Decimal(5, 2);
+    shortPickCount: Integer;
+    pickerPerformance: array<PickerPerformance>;
+}
+
+type PickerPerformance : {
+    pickerId: String(100);
+    tasksCompleted: Integer;
+    linesPicked: Integer;
+    quantityPicked: Decimal(18, 3);
+    averageTimeMinutes: Decimal(8, 2);
+    shortPicks: Integer;
+}
+
+type ShortPickReport : {
+    warehouseId: UUID;
+    periodStart: Date;
+    periodEnd: Date;
+    totalShortPicks: Integer;
+    totalShortQuantity: Decimal(18, 3);
+    shortPicksByReason: array<ShortPickReason>;
+    topShortItems: array<ShortItemSummary>;
+}
+
+type ShortPickReason : {
+    reason: String(200);
+    pickCount: Integer;
+    quantity: Decimal(18, 3);
+    percentOfTotal: Decimal(5, 2)
+}
+
+type ShortItemSummary : {
+    itemId: UUID;
+    itemCode: String(50);
+    itemName: String(200);
+    shortCount: Integer;
+    shortQuantity: Decimal(18, 3);
+}
+
+// ============================================================
+// PROJECTION VIEWS
+// ============================================================
+
+define view OrdersToReleaseView as
+    select
+        o.ID,
+        o.orderNumber,
+        o.orderType,
+        o.customer,
+        o.requiredShipDate,
+        o.lineCount,
+        o.totalOrderedQty,
+        o.priority,
+        o.serviceLevel,
+        o.status
+    from OutboundOrder as o
+    where o.status = #Open
+
+define view OrdersToAllocateView as
+    select
+        o.ID,
+        o.orderNumber,
+        o.customer,
+        o.requiredShipDate,
+        o.lineCount,
+        o.totalOrderedQty,
+        o.allocationPercent,
+        o.priority
+    from OutboundOrder as o
+    where o.status = #Released
+
+define view ActiveWavesView as
+    select
+        w.ID,
+        w.waveNumber,
+        w.waveType,
+        w.warehouse,
+        w.orderCount,
+        w.totalLines,
+        w.pickTaskCount,
+        w.completedTaskCount,
+        w.taskProgress,
+        w.status
+    from PickWave as w
+    where w.status in (#Released, #InProgress)
+
+define view OpenPickTasksView as
+    select
+        t.ID,
+        t.taskNumber,
+        t.item,
+        t.quantity,
+        t.pickZone,
+        t.pickBin,
+        t.pickSequence,
+        t.assignedTo,
+        t.priority,
+        t.status
+    from PickTask as t
+    where t.status in (#Open, #Assigned, #InProgress)
+
+define view ShortPicksAnalysis as
+    select
+        pt.item,
+        pt.pickZone,
+        pt.shortReason,
+        sum(pt.shortQuantity) as totalShortQty,
+        count(pt.ID) as shortPickCount,
+        avg(pt.shortPercent) as avgShortPercent
+    from PickTask as pt
+    where pt.status = #ShortPicked
+      and pt.shortQuantity > 0
+    group by pt.item, pt.pickZone, pt.shortReason
+
+define view LateOrdersView as
+    select
+        o.ID,
+        o.orderNumber,
+        o.customer,
+        o.requiredShipDate,
+        o.actualShipDate,
+        o.daysLate,
+        o.totalOrderedQty,
+        o.totalShippedQty,
+        o.isShortShip
+    from OutboundOrder as o
+    where o.isLate = true
+
+

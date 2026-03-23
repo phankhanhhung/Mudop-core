@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>BMMDL.Compiler</RootNamespace>
+    <AssemblyName>bmmdlc</AssemblyName>
+    <!-- Suppress vulnerability warning from Antlr4BuildTasks transitive dependency -->
+    <NoWarn>$(NoWarn);NU1903</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ANTLR packages (merged from Parser) -->
+    <PackageReference Include="Antlr4.Runtime.Standard" Version="4.13.1" />
+    <PackageReference Include="Antlr4BuildTasks" Version="12.8.0" PrivateAssets="all" />
+    
+    <!-- Other packages -->
+    <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.1" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+    
+    <!-- Logging -->
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Only ref MetaModel now (not Parser) -->
+    <ProjectReference Include="..\BMMDL.MetaModel\BMMDL.MetaModel.csproj" />
+    <ProjectReference Include="..\BMMDL.CodeGen\BMMDL.CodeGen.csproj" />
+    <ProjectReference Include="..\BMMDL.SchemaManager\BMMDL.SchemaManager.csproj" />
+    <ProjectReference Include="..\BMMDL.Runtime\BMMDL.Runtime.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ANTLR Grammar files -->
+    <Antlr4 Include="..\..\Grammar\BmmdlLexer.g4">
+      <Visitor>true</Visitor>
+      <Listener>false</Listener>
+      <Package>BMMDL.Compiler.Parsing</Package>
+    </Antlr4>
+    <Antlr4 Include="..\..\Grammar\BmmdlParser.g4">
+      <Visitor>true</Visitor>
+      <Listener>false</Listener>
+      <Package>BMMDL.Compiler.Parsing</Package>
+    </Antlr4>
+  </ItemGroup>
+
+</Project>

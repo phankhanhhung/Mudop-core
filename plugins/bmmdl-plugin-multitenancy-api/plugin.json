@@ -1,0 +1,10 @@
+{
+  "name": "BMMDL.Plugin.MultiTenancy.Api",
+  "version": "1.0.0",
+  "description": "Multi-tenancy API — tenant CRUD endpoints, tenant service DI registration",
+  "author": "BMMDL Team",
+  "entryAssembly": "BMMDL.Plugin.MultiTenancy.Api.dll",
+  "dependencies": ["BMMDL.Plugin.MultiTenancy"],
+  "bmmdlModules": [],
+  "autoLoad": true
+}

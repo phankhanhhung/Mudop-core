@@ -1,0 +1,222 @@
+// ============================================================
+// BMMDL Sample: E-Commerce Domain Model
+// ============================================================
+
+namespace ECommerce;
+
+using Common;
+
+// Customer Entity
+@Core.Description: 'Customer master data'
+@Tenant.Aware: true
+@Company.Aware: true
+entity Customer : Auditable, SoftDeletable {
+    key ID: UUID;
+    
+    @Core.Label: 'Customer Code'
+    @Sequence.Name: 'CustomerCodeSeq'
+    @Sequence.Pattern: 'CUS-{company}-{seq:6}'
+    customerCode: Code;
+    
+    @Core.Label: 'Full Name'
+    @Core.Mandatory: true
+    name: String(200);
+    
+    @Validation.Pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'
+    email: Email;
+    
+    phone: String(20);
+    
+    @Core.Label: 'Customer Type'
+    customerType: CustomerType default #Regular;
+    
+    @Core.Label: 'Credit Limit'
+    creditLimit: Amount default 0;
+    
+    status: Status default #Active;
+    
+    // Compositions - syntax: name: composition [cardinality] of Target
+    addresses: composition [*] of CustomerAddress;
+    
+    // Associations - syntax: name: association [cardinality] to Target
+    assignedSalesRep: association [0,1] to Employee;
+}
+
+enum CustomerType {
+    Regular = 1;
+    VIP = 2;
+    Wholesale = 3;
+}
+
+entity CustomerAddress {
+    key ID: UUID;
+    
+    addressType: AddressType;
+    street: String(500);
+    city: String(100);
+    state: String(100);
+    country: String(100);
+    postalCode: String(20);
+    isDefault: Boolean default false;
+}
+
+enum AddressType {
+    Billing;
+    Shipping;
+    Both;
+}
+
+// Product Entity
+@Core.Description: 'Product catalog'
+entity Product : Auditable {
+    key ID: UUID;
+    
+    @Sequence.Name: 'ProductCodeSeq'
+    @Sequence.Pattern: 'PRD-{category}-{seq:5}'
+    productCode: Code;
+    
+    @Core.Mandatory: true
+    name: String(200);
+    
+    description: String(2000);
+    
+    category: association [0,1] to ProductCategory;
+    
+    @Core.Label: 'Unit Price'
+    unitPrice: Amount;
+    
+    @Core.Label: 'Cost Price'
+    costPrice: Amount;
+    
+    unitOfMeasure: String(10) default 'PCS';
+    
+    isActive: Boolean default true;
+    
+    // Inventory tracking
+    stockQuantity: Integer default 0;
+    reorderLevel: Integer default 10;
+}
+
+entity ProductCategory {
+    key ID: UUID;
+    code: Code;
+    name: String(100);
+    parentCategory: association [0,1] to ProductCategory;
+}
+
+// Order Entity
+@Core.Description: 'Sales Order'
+@Tenant.Aware: true
+@Company.Aware: true
+entity Order : Auditable, CompanyAware {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Core.Immutable
+    @Sequence.Name: 'OrderNumberSeq'
+    @Sequence.Pattern: 'ORD-{company}-{year}{month}-{seq:5}'
+    @Sequence.Scope: #Company
+    @Sequence.ResetOn: #Monthly
+    orderNumber: Code;
+    
+    @Core.Mandatory: true
+    orderDate: Date default $today;
+    
+    @Core.Mandatory: true
+    customer: association [1] to Customer;
+    customerID: UUID;
+    
+    // Shipping info
+    shippingAddress: association [0,1] to CustomerAddress;
+    billingAddress: association [0,1] to CustomerAddress;
+    
+    // Amounts
+    @Core.Computed
+    subtotal: Amount;
+    
+    discountPercent: Decimal(5, 2) default 0;
+    
+    @Core.Computed
+    discountAmount: Amount;
+    
+    taxPercent: Decimal(5, 2) default 0;
+    
+    @Core.Computed
+    taxAmount: Amount;
+    
+    @Core.Computed
+    totalAmount: Amount;
+    
+    // Status
+    status: OrderStatus default #Draft;
+    
+    // Line items
+    items: composition [*] of OrderItem;
+    
+    // Payment
+    paymentMethod: PaymentMethod;
+    paymentStatus: PaymentStatus default #Pending;
+}
+
+entity OrderItem {
+    key ID: UUID;
+    
+    @Core.Mandatory: true
+    product: association [1] to Product;
+    productID: UUID;
+    
+    @Core.Mandatory: true
+    @Validation.Minimum: 1
+    quantity: Integer;
+    
+    unitPrice: Amount;
+    
+    discountPercent: Decimal(5, 2) default 0;
+    
+    @Core.Computed
+    lineTotal: Amount;
+}
+
+enum OrderStatus {
+    @Core.Label: 'Draft'
+    Draft;
+    
+    @Core.Label: 'Confirmed'
+    Confirmed;
+    
+    @Core.Label: 'Processing'
+    Processing;
+    
+    @Core.Label: 'Shipped'
+    Shipped;
+    
+    @Core.Label: 'Delivered'
+    Delivered;
+    
+    @Core.Label: 'Cancelled'
+    Cancelled;
+}
+
+enum PaymentMethod {
+    Cash;
+    CreditCard;
+    BankTransfer;
+    COD;
+}
+
+enum PaymentStatus {
+    Pending;
+    Paid;
+    PartiallyPaid;
+    Refunded;
+}
+
+// Employee (for sales rep)
+entity Employee : Auditable {
+    key ID: UUID;
+    employeeCode: Code;
+    name: String(200);
+    email: Email;
+    department: String(100);
+    isActive: Boolean default true;
+}

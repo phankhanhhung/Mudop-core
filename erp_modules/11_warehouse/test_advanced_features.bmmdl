@@ -1,0 +1,158 @@
+// ============================================================
+// Module: AdvancedTest (Standalone Test Module for Advanced Language Features)
+// Description: Tests inheritance, array types, ManyToMany, rules, annotate, service projections, action contracts
+// Install Order: 11 (alongside WarehouseTest)
+// Purpose: E2E coverage for P1/P2 language features
+// ============================================================
+
+module AdvancedTest version '1.0.0' {
+    author: 'BMMDL Test';
+    description: 'Advanced features test module for E2E testing';
+    publishes AdvancedTest;
+
+    namespace AdvancedTest {
+
+        // ============================================================
+        // LOCAL ASPECTS (standalone module, no dependencies)
+        // ============================================================
+
+        aspect TenantAware {
+            tenantId: UUID;
+        }
+
+        aspect Auditable {
+            createdAt: Timestamp;
+            modifiedAt: Timestamp;
+        }
+
+        // ============================================================
+        // C7: INHERITANCE — abstract entity + derived entities
+        // Tests: polymorphic GET, multi-table INSERT/UPDATE/DELETE
+        // ============================================================
+
+        abstract entity Vehicle : TenantAware {
+            key id: UUID;
+            make: String(100);
+            model: String(100);
+            year: Integer;
+            status: String(20) default 'active';
+        }
+
+        @TenantScoped
+        entity Car extends Vehicle {
+            doors: Integer default 4;
+            bodyType: String(50);
+        }
+
+        @TenantScoped
+        entity Truck extends Vehicle {
+            payloadCapacity: Decimal(10, 2);
+            axleCount: Integer default 2;
+        }
+
+        // ============================================================
+        // C5: ARRAY TYPES
+        // Tests: Array<String>, Array<Integer> persistence and retrieval
+        // ============================================================
+
+        entity TaggedItem : TenantAware {
+            key id: UUID;
+            name: String(100);
+            tags: Array<String(50)>;
+            scores: Array<Integer>;
+            metadata: String(500);
+        }
+
+        // ============================================================
+        // C6: MANY-TO-MANY
+        // Tests: junction table, $expand, $ref link/unlink, cascade cleanup
+        // ============================================================
+
+        entity Skill : TenantAware {
+            key id: UUID;
+            name: String(100);
+            level: Integer default 1;
+        }
+
+        entity Worker : TenantAware {
+            key id: UUID;
+            name: String(100);
+            department: String(100);
+            skills: association [*,*] to Skill;
+        }
+
+        // ============================================================
+        // RULES — compute, validate, when + bound action with let
+        // Tests: compute chaining, validation rejection, bound action
+        // ============================================================
+
+        entity Invoice : Auditable, TenantAware {
+            key id: UUID;
+            invoiceNumber: String(50);
+            subtotal: Decimal(18, 2) default 0;
+            taxRate: Decimal(5, 4) default 0.15;
+            taxAmount: Decimal(18, 2) default 0;
+            totalAmount: Decimal(18, 2) default 0;
+            status: String(20) default 'draft';
+            items: composition [*] of InvoiceItem;
+
+            action ApplyDiscount(percentage: Decimal) returns Boolean {
+                let discountAmount = subtotal * percentage;
+                compute subtotal = subtotal - discountAmount;
+                return true;
+            }
+
+            // A7: Action with REQUIRES/ENSURES contracts
+            action SubmitInvoice() returns Boolean
+                requires status = 'draft'
+                requires subtotal > 0
+                ensures status = 'submitted'
+            {
+                compute status = 'submitted';
+                return true;
+            }
+        }
+
+        entity InvoiceItem : TenantAware {
+            key id: UUID;
+            description: String(200);
+            quantity: Integer default 1;
+            unitPrice: Decimal(18, 2) default 0;
+        }
+
+        // Rule: Compute totals on create/update
+        rule ComputeInvoiceTotals for Invoice on before create, before update {
+            compute taxAmount = subtotal * taxRate;
+            compute totalAmount = subtotal + subtotal * taxRate;
+        }
+
+        // Rule: Validate subtotal is non-negative
+        rule ValidateInvoiceSubtotal for Invoice on before create, before update {
+            validate subtotal >= 0 message 'Subtotal must be non-negative' severity error;
+        }
+
+        // ============================================================
+        // A1: ANNOTATE DIRECTIVE
+        // Tests: retroactive annotation applied to existing entity
+        // ============================================================
+
+        annotate Vehicle with {
+            @UI.Label: 'Fleet Vehicle';
+        }
+
+        // ============================================================
+        // A5: SERVICE PROJECTION + A7: ACTION CONTRACTS
+        // Tests: field exclusion in projection, action contract metadata
+        // ============================================================
+
+        service FleetService {
+            entity Items as TaggedItem { * excluding { metadata } };
+
+            action RetireVehicle(vehicleId: UUID, reason: String) returns Boolean;
+
+            // A7: Unbound action with contract clause
+            action ResetAllDrafts() returns Boolean
+                requires true;
+        }
+    }
+}

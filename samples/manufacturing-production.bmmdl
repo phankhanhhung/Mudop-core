@@ -1,0 +1,381 @@
+// ============================================================
+// BMMDL Sample: Manufacturing - Production Orders
+// ============================================================
+
+namespace Manufacturing;
+
+using Common;
+using Manufacturing;
+
+// ============================================================
+// PRODUCTION ORDER / WORK ORDER
+// ============================================================
+
+@Core.Description: 'Production Order / Work Order'
+@Tenant.Aware: true
+@Company.Aware: true
+entity ProductionOrder : Auditable {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Core.Immutable
+    @Sequence.Pattern: 'PO-{plant}-{year}{month}-{seq:5}'
+    @Sequence.Scope: #Company
+    @Sequence.ResetOn: #Monthly
+    orderNumber: String(50);
+    
+    @Core.Label: 'Order Type'
+    orderType: ProductionOrderType;
+    
+    // Product
+    @Core.Mandatory: true
+    @Core.Label: 'Product to Produce'
+    item: association [1] to Item;
+    
+    @Core.Label: 'BOM Version'
+    bom: association [0,1] to BOM;
+    
+    @Core.Label: 'Routing'
+    routing: association [0,1] to Routing;
+    
+    // Quantities
+    @Core.Mandatory: true
+    @Core.Label: 'Planned Quantity'
+    plannedQty: Quantity;
+    
+    @Core.Computed
+    @Core.Label: 'Completed Quantity'
+    completedQty: Quantity default 0;
+    
+    @Core.Computed
+    @Core.Label: 'Scrapped Quantity'
+    scrappedQty: Quantity default 0;
+    
+    uom: UnitOfMeasure;
+    
+    // Dates
+    @Core.Mandatory: true
+    @Core.Label: 'Planned Start'
+    plannedStartDate: Date;
+    
+    @Core.Label: 'Planned End'
+    plannedEndDate: Date;
+    
+    @Core.Label: 'Actual Start'
+    actualStartDate: Date;
+    
+    @Core.Label: 'Actual End'
+    actualEndDate: Date;
+    
+    // Location
+    plant: association [1] to Plant;
+    
+    // Priority
+    priority: Priority default #Normal;
+    
+    // Status
+    status: ProductionOrderStatus default #Planned;
+    
+    // Costing
+    @Core.Computed
+    plannedCost: UnitCost;
+    
+    @Core.Computed
+    actualCost: UnitCost;
+    
+    // Components
+    materialLines: composition [*] of ProductionMaterialLine;
+    
+    // Operations
+    operationLines: composition [*] of ProductionOperation;
+    
+    // Output
+    outputLines: composition [*] of ProductionOutput;
+    
+    // References
+    salesOrderRef: String(50);
+    customerRef: String(100);
+    
+    remarks: String(2000);
+}
+
+enum ProductionOrderType {
+    Standard;
+    Rework;
+    Disassembly;
+    Prototype;
+    QualitySample;
+}
+
+enum ProductionOrderStatus {
+    Planned;
+    Released;
+    InProgress;
+    Completed;
+    Closed;
+    Cancelled;
+    OnHold;
+}
+
+enum Priority {
+    Low;
+    Normal;
+    High;
+    Urgent;
+    Critical;
+}
+
+// ============================================================
+// PRODUCTION MATERIAL LINE (COMPONENTS)
+// ============================================================
+
+entity ProductionMaterialLine {
+    key ID: UUID;
+    
+    lineNumber: Integer;
+    
+    @Core.Label: 'Component Item'
+    item: association [1] to Item;
+    
+    @Core.Label: 'Required Quantity'
+    requiredQty: Quantity;
+    
+    @Core.Label: 'Issued Quantity'
+    issuedQty: Quantity default 0;
+    
+    @Core.Label: 'Consumed Quantity'
+    consumedQty: Quantity default 0;
+    
+    @Core.Label: 'Scrapped Quantity'
+    scrappedQty: Quantity default 0;
+    
+    uom: UnitOfMeasure;
+    
+    @Core.Label: 'Issue Warehouse'
+    warehouse: association [0,1] to Warehouse;
+    
+    @Core.Label: 'For Operation'
+    operationSeq: Integer;
+    
+    @Core.Label: 'Backflush'
+    isBackflush: Boolean default true;
+    
+    status: MaterialLineStatus default #Pending;
+    
+    // Lot/Batch tracking
+    batchNumber: BatchNumber;
+}
+
+enum MaterialLineStatus {
+    Pending;
+    PartiallyIssued;
+    Issued;
+    Consumed;
+}
+
+// ============================================================
+// PRODUCTION OPERATION
+// ============================================================
+
+entity ProductionOperation {
+    key ID: UUID;
+    
+    operationSeq: Integer;
+    operationCode: String(20);
+    description: String(200);
+    
+    workCenter: association [1] to WorkCenter;
+    
+    // Planned Time
+    @Core.Label: 'Planned Setup (Hours)'
+    plannedSetupHours: Decimal(8, 2);
+    
+    @Core.Label: 'Planned Run (Hours)'
+    plannedRunHours: Decimal(8, 2);
+    
+    // Actual Time
+    @Core.Label: 'Actual Setup (Hours)'
+    actualSetupHours: Decimal(8, 2);
+    
+    @Core.Label: 'Actual Run (Hours)'
+    actualRunHours: Decimal(8, 2);
+    
+    // Labor
+    @Core.Label: 'Planned Labor Hours'
+    plannedLaborHours: Decimal(8, 2);
+    
+    @Core.Label: 'Actual Labor Hours'
+    actualLaborHours: Decimal(8, 2);
+    
+    // Quantities
+    @Core.Label: 'Completed Quantity'
+    completedQty: Quantity default 0;
+    
+    @Core.Label: 'Scrapped Quantity'
+    scrappedQty: Quantity default 0;
+    
+    // Dates
+    plannedStartDate: Timestamp;
+    plannedEndDate: Timestamp;
+    actualStartDate: Timestamp;
+    actualEndDate: Timestamp;
+    
+    status: OperationStatus default #Pending;
+    
+    // Assigned operator
+    assignedOperator: String(100);
+}
+
+enum OperationStatus {
+    Pending;
+    Ready;
+    InProgress;
+    Completed;
+    Cancelled;
+}
+
+// ============================================================
+// PRODUCTION OUTPUT
+// ============================================================
+
+entity ProductionOutput {
+    key ID: UUID;
+    
+    @Core.Label: 'Output Item'
+    item: association [1] to Item;
+    
+    @Core.Label: 'Output Quantity'
+    quantity: Quantity;
+    
+    uom: UnitOfMeasure;
+    
+    @Core.Label: 'Output Type'
+    outputType: OutputType;
+    
+    @Core.Label: 'Target Warehouse'
+    warehouse: association [0,1] to Warehouse;
+    
+    // Tracking
+    batchNumber: BatchNumber;
+    serialNumber: SerialNumber;
+    
+    @Core.Label: 'Manufacturing Date'
+    manufacturingDate: Date;
+    
+    @Core.Label: 'Expiry Date'
+    expiryDate: Date;
+    
+    qualityStatus: QualityStatus default #Pending;
+    
+    @Core.Label: 'Output Date'
+    outputDate: Timestamp;
+}
+
+enum OutputType {
+    MainProduct;
+    ByProduct;
+    CoProduct;
+    Scrap;
+}
+
+// ============================================================
+// SHOP FLOOR CONTROL - LABOR TICKET
+// ============================================================
+
+@Core.Description: 'Labor Time Ticket'
+entity LaborTicket : Auditable {
+    key ID: UUID;
+    
+    @Sequence.Pattern: 'LT-{date}-{seq:5}'
+    ticketNumber: String(50);
+    
+    productionOrder: association [1] to ProductionOrder;
+    operation: association [1] to ProductionOperation;
+    
+    @Core.Label: 'Employee ID'
+    employeeId: String(50);
+    
+    @Core.Label: 'Employee Name'
+    employeeName: String(100);
+    
+    // Time
+    @Core.Mandatory: true
+    startTime: Timestamp;
+    
+    endTime: Timestamp;
+    
+    @Core.Computed
+    @Core.Label: 'Total Hours'
+    totalHours: Decimal(8, 2);
+    
+    // Work Type
+    workType: LaborType;
+    
+    // Output
+    goodQuantity: Quantity default 0;
+    rejectQuantity: Quantity default 0;
+    
+    // Rate
+    hourlyRate: UnitCost;
+    
+    remarks: String(500);
+    
+    status: TicketStatus default #Open;
+}
+
+enum LaborType {
+    Setup;
+    Production;
+    Rework;
+    Maintenance;
+    Idle;
+    Training;
+}
+
+enum TicketStatus {
+    Open;
+    Submitted;
+    Approved;
+    Rejected;
+}
+
+// ============================================================
+// MACHINE DOWNTIME
+// ============================================================
+
+entity MachineDowntime : Auditable {
+    key ID: UUID;
+    
+    workCenter: association [1] to WorkCenter;
+    productionOrder: association [0,1] to ProductionOrder;
+    
+    @Core.Mandatory: true
+    startTime: Timestamp;
+    
+    endTime: Timestamp;
+    
+    @Core.Computed
+    totalMinutes: Integer;
+    
+    downtimeReason: DowntimeReason;
+    
+    description: String(500);
+    
+    @Core.Label: 'Is Planned'
+    isPlanned: Boolean default false;
+    
+    @Core.Label: 'Reported By'
+    reportedBy: String(100);
+}
+
+enum DowntimeReason {
+    Breakdown;
+    Maintenance;
+    NoMaterial;
+    NoOperator;
+    Changeover;
+    QualityIssue;
+    PowerOutage;
+    ScheduledStop;
+    Other;
+}

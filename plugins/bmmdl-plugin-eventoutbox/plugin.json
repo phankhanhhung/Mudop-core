@@ -1,0 +1,10 @@
+{
+  "name": "BMMDL.Plugin.EventOutbox",
+  "version": "1.0.0",
+  "description": "Transactional outbox pattern for guaranteed event delivery",
+  "author": "BMMDL Team",
+  "entryAssembly": "BMMDL.Plugin.EventOutbox.dll",
+  "dependencies": [],
+  "bmmdlModules": [],
+  "autoLoad": true
+}

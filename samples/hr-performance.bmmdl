@@ -1,0 +1,220 @@
+// ============================================================
+// BMMDL Sample: HR - Performance Management
+// Domain: Human Resources - Performance Reviews and Goals
+// ============================================================
+
+namespace HR;
+
+// ============================================================
+// PERFORMANCE REVIEW CYCLE
+// ============================================================
+
+@Core.Description: 'Performance review cycle definition'
+entity ReviewCycle : Auditable, TenantAware {
+    key ID: UUID;
+    name: String(100);
+    description: String(500);
+    
+    // Period
+    startDate: Date;
+    endDate: Date;
+    
+    // Phases
+    goalSettingStart: Date;
+    goalSettingEnd: Date;
+    selfReviewStart: Date;
+    selfReviewEnd: Date;
+    managerReviewStart: Date;
+    managerReviewEnd: Date;
+    calibrationStart: Date;
+    calibrationEnd: Date;
+    
+    // Status
+    status: String(20) default 'Draft'; // Draft, Active, Completed, Cancelled
+    isActive: Boolean default false;
+    
+    // Reviews
+    reviews: composition [*] of PerformanceReview;
+}
+
+// ============================================================
+// PERFORMANCE REVIEW
+// ============================================================
+
+@Core.Description: 'Employee performance review'
+entity PerformanceReview : Auditable {
+    key ID: UUID;
+    
+    // Review Period
+    reviewPeriodStart: Date;
+    reviewPeriodEnd: Date;
+    
+    // Ratings (1-5 scale)
+    selfRating: PerformanceRating;
+    managerRating: PerformanceRating;
+    finalRating: PerformanceRating;
+    
+    // Scores (weighted)
+    goalScore: Decimal(5, 2);
+    competencyScore: Decimal(5, 2);
+    overallScore: Decimal(5, 2);
+    
+    // Comments
+    selfComments: String(4000);
+    managerComments: String(4000);
+    hrComments: String(2000);
+    
+    // Strengths and Improvements
+    strengths: String(2000);
+    areasForImprovement: String(2000);
+    developmentPlan: String(2000);
+    
+    // Status
+    status: String(20) default 'Draft'; // Draft, SelfReview, ManagerReview, Calibration, Completed
+    
+    // Approvals
+    submittedAt: DateTime;
+    managerReviewedAt: DateTime;
+    hrApprovedAt: DateTime;
+    
+    // Promotion/Increment Recommendation
+    recommendPromotion: Boolean default false;
+    recommendedPosition: association [0,1] to Position;
+    recommendIncrement: Boolean default false;
+    recommendedIncrementPercent: Percentage;
+    
+    // Relations
+    employee: association [1] to Employee;
+    reviewer: association [1] to Employee;
+    cycle: association [1] to ReviewCycle;
+    
+    // Goals
+    goals: composition [*] of PerformanceGoal;
+    competencyRatings: composition [*] of CompetencyRating;
+}
+
+// ============================================================
+// GOALS AND COMPETENCIES
+// ============================================================
+
+@Core.Description: 'Performance goal for employee'
+entity PerformanceGoal : Auditable {
+    key ID: UUID;
+    title: String(200);
+    description: String(2000);
+    
+    // SMART criteria
+    measurementCriteria: String(1000);
+    targetValue: String(100);
+    actualValue: String(100);
+    
+    // Weight and Score
+    weightPercent: Percentage;
+    achievementPercent: Percentage default 0;
+    score: Decimal(5, 2) default 0;
+    
+    // Dates
+    targetDate: Date;
+    completedDate: Date;
+    
+    // Status
+    status: String(20) default 'NotStarted'; // NotStarted, InProgress, Completed, Cancelled
+    
+    // Comments
+    selfComment: String(1000);
+    managerComment: String(1000);
+    
+    review: association [1] to PerformanceReview;
+}
+
+@Core.Description: 'Competency definition'
+entity Competency : Auditable, TenantAware {
+    key ID: UUID;
+    name: String(100);
+    description: String(500);
+    category: String(50); // Technical, Behavioral, Leadership
+    
+    // Proficiency levels
+    level1Description: String(500);
+    level2Description: String(500);
+    level3Description: String(500);
+    level4Description: String(500);
+    level5Description: String(500);
+    
+    isActive: Boolean default true;
+}
+
+@Core.Description: 'Employee competency rating'
+entity CompetencyRating {
+    key ID: UUID;
+    selfRating: Integer; // 1-5
+    managerRating: Integer; // 1-5
+    finalRating: Integer; // 1-5
+    
+    selfComment: String(500);
+    managerComment: String(500);
+    
+    review: association [1] to PerformanceReview;
+    competency: association [1] to Competency;
+}
+
+// ============================================================
+// TRAINING
+// ============================================================
+
+@Core.Description: 'Training course definition'
+entity TrainingCourse : Auditable, TenantAware {
+    key ID: UUID;
+    code: String(20);
+    name: String(200);
+    description: String(2000);
+    
+    // Details
+    category: String(50);
+    duration: Hours;
+    formatType: String(20); // Online, Classroom, Hybrid
+    provider: String(100);
+    
+    // Cost
+    costPerParticipant: Decimal(10, 2);
+    currency: String(3) default 'USD';
+    
+    isActive: Boolean default true;
+    isMandatory: Boolean default false;
+    
+    // Prerequisites
+    prerequisites: String(500);
+}
+
+@Core.Description: 'Employee training record'
+entity EmployeeTraining : Auditable {
+    key ID: UUID;
+    
+    // Dates
+    enrollmentDate: Date;
+    startDate: Date;
+    completionDate: Date;
+    expiryDate: Date;
+    
+    // Status
+    status: TrainingStatus default #Scheduled;
+    
+    // Scores
+    score: Decimal(5, 2);
+    passingScore: Decimal(5, 2) default 70;
+    isPassed: Boolean default false;
+    
+    // Feedback
+    feedback: String(1000);
+    rating: Integer; // 1-5
+    
+    // Certificate
+    certificateUrl: String(500);
+    certificateNumber: String(50);
+    
+    employee: association [1] to Employee;
+    course: association [1] to TrainingCourse;
+}
+
+
+

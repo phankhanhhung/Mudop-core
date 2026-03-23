@@ -1,0 +1,52 @@
+﻿// ============================================================
+// Module: Services
+// Description: API services for all domains (simplified)
+// Install Order: 7
+// ============================================================
+
+module Services version '1.0.0' {
+    author: 'ERP Team';
+    description: 'API services and operations for ERP';
+    depends on Rules version '>=1.0.0';
+    imports Rules, HR, Finance, SCM, MasterData, Core;
+    publishes Services;
+
+    namespace Services {
+        // ============================================================
+        // SERVICE CONFIGURATION
+        // ============================================================
+
+        @Description: 'API endpoint configuration'
+        entity ServiceEndpoint : Auditable, TenantAware {
+            key ID: UUID;
+
+            serviceName: Name;
+            endpointPath: String(200);
+            httpMethod: HttpMethod;
+            targetEntity: String(100);
+            projectionDef: Description;
+            isActive: Boolean default true;
+        }
+
+        enum HttpMethod {
+            GET;
+            POST;
+            PUT;
+            PATCH;
+            DELETE;
+        }
+
+        @Description: 'Service action definition'
+        entity ServiceAction : Auditable, TenantAware {
+            key ID: UUID;
+
+            serviceName: Name;
+            actionName: Name;
+            httpMethod: HttpMethod;
+            inputParams: Description;
+            returnType: String(100);
+            isActive: Boolean default true;
+        }
+
+    }
+}

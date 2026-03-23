@@ -1,0 +1,9 @@
+<Project>
+  <!-- WSL2 workaround: redirect obj/bin to Linux filesystem when running on Linux -->
+  <PropertyGroup Condition="'$(OS)' != 'Windows_NT'">
+    <BaseIntermediateOutputPath>$(HOME)/.dotnet-build/$(MSBuildProjectName)/obj/</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(HOME)/.dotnet-build/$(MSBuildProjectName)/bin/</BaseOutputPath>
+    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Configuration)/</IntermediateOutputPath>
+    <OutputPath>$(BaseOutputPath)$(Configuration)/</OutputPath>
+  </PropertyGroup>
+</Project>

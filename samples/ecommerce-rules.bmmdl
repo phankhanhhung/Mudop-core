@@ -1,0 +1,94 @@
+// ============================================================
+// BMMDL Sample: Business Rules
+// ============================================================
+
+namespace ECommerce;
+
+// Order validation and computation rules
+rule OrderValidation for Order on before create, before update {
+    // Validate customer has credit
+    validate customer.status = #Active
+        message 'Customer must be active to place orders'
+        severity error;
+    
+    // Validate order has items
+    validate count(items) > 0
+        message 'Order must have at least one item'
+        severity error;
+    
+    // Validate total doesn't exceed credit limit
+    when customer.customerType != #VIP then {
+        validate totalAmount <= customer.creditLimit
+            message 'Order total exceeds customer credit limit'
+            severity error;
+    }
+}
+
+rule OrderCalculation for Order on before create, before update {
+    // Calculate subtotal from line items
+    compute subtotal = sum(items.lineTotal);
+    
+    // Calculate discount
+    compute discountAmount = subtotal * (discountPercent / 100);
+    
+    // Calculate tax on discounted amount
+    compute taxAmount = (subtotal - discountAmount) * (taxPercent / 100);
+    
+    // Calculate total
+    compute totalAmount = subtotal - discountAmount + taxAmount;
+}
+
+rule OrderItemCalculation for OrderItem on before create, before update {
+    // Copy product price if not set
+    when unitPrice = 0 or unitPrice = null then {
+        compute unitPrice = product.unitPrice;
+    }
+    
+    // Calculate line total
+    compute lineTotal = quantity * unitPrice * (1 - discountPercent / 100);
+}
+
+rule OrderStatusTransition for Order on before update {
+    // Validate status transitions
+    when $old.status = #Draft and status != #Confirmed and status != #Cancelled then {
+        validate false
+            message 'Draft orders can only be Confirmed or Cancelled'
+            severity error;
+    }
+    
+    when $old.status = #Confirmed and status = #Draft then {
+        validate false
+            message 'Confirmed orders cannot go back to Draft'
+            severity error;
+    }
+    
+    when $old.status = #Shipped and status = #Cancelled then {
+        validate false
+            message 'Shipped orders cannot be cancelled'
+            severity error;
+    }
+}
+
+// Inventory rules
+rule InventoryCheck for OrderItem on before create {
+    validate product.stockQuantity >= quantity
+        message 'Insufficient stock for product'
+        severity error;
+}
+
+rule InventoryUpdate for OrderItem on after create {
+    // Deduct stock when order item created
+    compute product.stockQuantity = product.stockQuantity - quantity;
+}
+
+rule InventoryRestore for OrderItem on after delete {
+    // Restore stock when order item deleted
+    compute product.stockQuantity = product.stockQuantity + quantity;
+}
+
+// Low stock alert
+rule LowStockAlert for Product on after update {
+    when stockQuantity <= reorderLevel and $old.stockQuantity > reorderLevel then {
+        call NotificationService.SendLowStockAlert(ID, productCode, name, stockQuantity);
+    }
+}

@@ -1,0 +1,107 @@
+// showcase_analytics.bmmdl
+// Sample module for the Aggregation Showcase demo.
+// Provides three entities with rich numeric and categorical fields
+// designed to produce interesting $apply groupby/aggregate results.
+
+module showcase version '1.0' {
+    author "BMMDL Team";
+    description "Analytics showcase module — demo data for the aggregation playground";
+    depends core version '1.0';
+
+    namespace analytics {
+
+        // ─────────────────────────────────────────────────────────────────
+        // Enums
+        // ─────────────────────────────────────────────────────────────────
+
+        enum OrderStatus {
+            Draft    = 1;
+            Confirmed = 2;
+            Shipped  = 3;
+            Delivered = 4;
+            Cancelled = 5;
+        }
+
+        enum SaleChannel {
+            Online    = 1;
+            Retail    = 2;
+            Wholesale = 3;
+            Direct    = 4;
+        }
+
+        enum Region {
+            NorthAmerica = 1;
+            Europe       = 2;
+            AsiaPacific  = 3;
+            LatinAmerica = 4;
+            MiddleEast   = 5;
+        }
+
+        enum Quarter {
+            Q1 = 1;
+            Q2 = 2;
+            Q3 = 3;
+            Q4 = 4;
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // SalesOrder — good for: Region × Category revenue aggregation,
+        //              status distribution, discount analysis
+        // ─────────────────────────────────────────────────────────────────
+        entity SalesOrder {
+            key ID: UUID;
+            OrderNumber: String(20);
+            Region: Region default #NorthAmerica;
+            Category: String(100);
+            SalesRep: String(200);
+            Channel: SaleChannel default #Online;
+            Status: OrderStatus default #Draft;
+            Amount: Decimal(18,2);
+            Discount: Decimal(5,2);
+            Quantity: Integer;
+            OrderDate: Date;
+            Year: Integer;
+            Quarter: Quarter default #Q1;
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // ProductSale — good for: Category revenue/margin breakdown,
+        //               channel comparison, top-selling products
+        // ─────────────────────────────────────────────────────────────────
+        entity ProductSale {
+            key ID: UUID;
+            ProductName: String(200);
+            Category: String(100);
+            SubCategory: String(100);
+            Channel: SaleChannel default #Online;
+            Region: Region default #NorthAmerica;
+            UnitPrice: Decimal(18,2);
+            UnitCost: Decimal(18,2);
+            QuantitySold: Integer;
+            Revenue: Decimal(18,2);
+            GrossMargin: Decimal(18,2);
+            SaleDate: Date;
+            Year: Integer;
+            Quarter: Quarter default #Q1;
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // StaffKpi — good for: Department performance, role-level analysis,
+        //            quarterly target vs actual comparisons
+        // ─────────────────────────────────────────────────────────────────
+        entity StaffKpi {
+            key ID: UUID;
+            EmployeeName: String(200);
+            Department: String(100);
+            Role: String(100);
+            Region: Region default #NorthAmerica;
+            Year: Integer;
+            Quarter: Quarter default #Q1;
+            TargetRevenue: Decimal(18,2);
+            ActualRevenue: Decimal(18,2);
+            DealsCount: Integer;
+            CustomerScore: Decimal(3,1);
+            CallsCount: Integer;
+        }
+    }
+}

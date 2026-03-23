@@ -1,0 +1,88 @@
+// ============================================================
+// BMMDL Sample: Model v1.1 (New Version)
+// For migration diff testing
+// ============================================================
+
+namespace TestMigration;
+
+type Money : Decimal(18, 2);
+type Code : String(50);
+
+enum CustomerStatus {
+    Active;
+    Inactive;
+    Suspended;     // New enum value
+}
+
+enum OrderStatus {   // New enum
+    Draft;
+    Confirmed;
+    Shipped;
+    Delivered;
+}
+
+entity Customer {
+    key ID: UUID;
+    
+    customerCode: Code;
+    fullName: String(150);     // Renamed from 'name', type changed (100 -> 150)
+    email: String(255);
+    // phone removed
+    status: CustomerStatus default #Active;
+    creditLimit: Money default 0;
+    
+    // New fields
+    createdAt: DateTime;
+    modifiedAt: DateTime;
+    
+    index idx_customer_code on (customerCode);
+    unique index idx_customer_email on (email);  // New index
+}
+
+entity Order {
+    key ID: UUID;
+    
+    orderNumber: Code;
+    orderDate: Date default $today;
+    customerId: UUID;
+    
+    customer: association [1] to Customer;
+    
+    subtotal: Money default 0;
+    discountAmount: Money default 0;   // New field
+    taxAmount: Money default 0;        // New field
+    totalAmount: Money default 0;
+    
+    status: OrderStatus default #Draft;  // Type changed from String to Enum
+    
+    items: composition [*] of OrderItem;
+    
+    unique index idx_order_number on (orderNumber);
+    index idx_order_date on (orderDate);   // New index
+}
+
+entity OrderItem {
+    key ID: UUID;
+    
+    orderId: UUID;
+    productName: String(200);
+    quantity: Integer default 1;
+    unitPrice: Money;
+    
+    // New computed field
+    virtual lineTotal: Money computed = quantity * unitPrice;
+}
+
+// New entity
+entity OrderHistory {
+    key ID: UUID;
+    
+    orderId: UUID;
+    actionName: String(50);
+    oldValue: String(2000);
+    newValue: String(2000);
+    changedAt: DateTime;
+    changedBy: UUID;
+    
+    orderRef: association [1] to Order;
+}

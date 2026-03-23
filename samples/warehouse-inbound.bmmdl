@@ -1,0 +1,888 @@
+﻿// ============================================================
+// BMMDL Sample: Warehouse - Inbound Operations
+// Advanced features: events, computed fields, actions, business rules
+// ============================================================
+
+namespace Warehouse;
+
+using Common;
+
+// ============================================================
+// DOMAIN EVENTS - INBOUND
+// ============================================================
+
+event InboundShipmentCreated {
+    shipmentId: UUID;
+    shipmentNumber: String(50);
+    vendorId: UUID;
+    expectedArrival: Date;
+    createdAt: DateTime;
+}
+
+event InboundShipmentReceived {
+    shipmentId: UUID;
+    shipmentNumber: String(50);
+    receivedBy: UUID;
+    totalQuantity: Decimal(18, 3);
+    receivedAt: DateTime;
+}
+
+event GoodsReceiptPosted {
+    receiptId: UUID;
+    receiptNumber: String(50);
+    shipmentId: UUID;
+    postedBy: UUID;
+    totalValue: Decimal(18, 2);
+    postedAt: DateTime;
+}
+
+event QualityInspectionRequired {
+    receiptLineId: UUID;
+    itemId: UUID;
+    quantity: Decimal(18, 3);
+    inspectionType: String(50);
+    triggeredAt: DateTime;
+}
+
+event PutawayTaskCreated {
+    taskId: UUID;
+    receiptLineId: UUID;
+    sourceBinId: UUID;
+    targetBinId: UUID;
+    itemId: UUID;
+    quantity: Decimal(18, 3);
+    createdAt: DateTime;
+}
+
+event PutawayCompleted {
+    taskId: UUID;
+    completedBy: UUID;
+    actualBinId: UUID;
+    actualQuantity: Decimal(18, 3);
+    completedAt: DateTime;
+}
+
+// ============================================================
+// INBOUND SHIPMENT (ASN - Advance Shipping Notice)
+// ============================================================
+
+@Core.Description: 'Inbound Shipment / Advance Shipping Notice'
+@Tenant.Aware: true
+@Company.Aware: true
+entity InboundShipment : Auditable {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Core.Immutable
+    @Sequence.Pattern: 'ISN-{company}-{year}{month}-{seq:5}'
+    @Sequence.Scope: #Company
+    @Sequence.ResetOn: #Monthly
+    shipmentNumber: String(50);
+    
+    shipmentType: InboundShipmentType;
+    
+    // Vendor/Source
+    @Core.Mandatory: true
+    vendor: association [1] to Vendor;
+    
+    vendorShipmentRef: String(100);
+    
+    // Reference documents
+    purchaseOrderRef: String(50);
+    transferOrderRef: String(50);
+    returnAuthorizationRef: String(50);
+    
+    // Destination
+    @Core.Mandatory: true
+    warehouse: association [1] to WarehouseMaster;
+    
+    receivingDock: association [0,1] to Dock;
+    
+    // Dates
+    @Core.Label: 'Ship Date'
+    shipDate: Date;
+    
+    @Core.Mandatory: true
+    @Core.Label: 'Expected Arrival'
+    expectedArrivalDate: Date;
+    
+    expectedArrivalTime: Time;
+    
+    @Core.Label: 'Actual Arrival'
+    actualArrivalDate: Date;
+    actualArrivalTime: Time;
+    
+    // Carrier info
+    carrier: String(100);
+    trackingNumber: String(100);
+    vehicleNumber: String(50);
+    driverName: String(100);
+    driverPhone: String(30);
+    sealNumber: String(50);
+    
+    // Quantities
+    @Core.Computed
+    @Core.Label: 'Expected Lines'
+    virtual expectedLineCount: Integer computed = count(lines);
+    
+    @Core.Computed
+    @Core.Label: 'Expected Quantity'
+    virtual expectedTotalQty: Decimal(18, 3) computed = sum(lines.expectedQty);
+    
+    @Core.Computed
+    @Core.Label: 'Received Quantity'
+    virtual receivedTotalQty: Decimal(18, 3) computed = sum(lines.receivedQty);
+    
+    @Core.Computed
+    @Core.Label: 'Receipt %'
+    virtual receiptPercent: Decimal(5, 2) computed = 
+        case when expectedTotalQty > 0 
+             then round((receivedTotalQty * 100.0) / expectedTotalQty, 2)
+             else 0
+        end;
+    
+    virtual isFullyReceived: Boolean computed = receiptPercent >= 100;
+    virtual isPartiallyReceived: Boolean computed = receiptPercent > 0 and receiptPercent < 100;
+    
+    // Weight & Volume
+    @Core.Label: 'Gross Weight (kg)'
+    grossWeightKg: Decimal(12, 3);
+    
+    @Core.Label: 'Net Weight (kg)'
+    netWeightKg: Decimal(12, 3);
+    
+    @Core.Label: 'Volume (mÂ³)'
+    volumeCubicM: Decimal(12, 4);
+    
+    @Core.Label: 'Pallet Count'
+    palletCount: Integer default 0;
+    
+    @Core.Label: 'Carton Count'
+    cartonCount: Integer default 0;
+    
+    // Priority and scheduling
+    priority: ShipmentPriority default #Normal;
+    
+    @Core.Label: 'Appointment Slot'
+    appointmentSlotId: UUID;
+    
+    // Status
+    status: InboundShipmentStatus default #Draft;
+    
+    // Receiving
+    receivedBy: String(100);
+    receivedAt: Timestamp;
+    
+    // Lines
+    lines: composition [*] of InboundShipmentLine;
+    
+    remarks: String(2000);
+    
+    // ========================================
+    // INDEXES
+    // ========================================
+    
+    unique index idx_shipment_number on (shipmentNumber);
+    index idx_shipment_vendor on (vendor);
+    index idx_shipment_warehouse on (warehouse);
+    index idx_shipment_status on (status);
+    index idx_shipment_expected_arrival on (expectedArrivalDate);
+    index idx_shipment_po_ref on (purchaseOrderRef);
+    index idx_shipment_tracking on (trackingNumber);
+    
+    // ========================================
+    // CONSTRAINTS
+    // ========================================
+    
+    constraint chk_status check (status in (#Draft, #Confirmed, #InTransit, #Arrived, #Receiving, #Received, #Closed, #Cancelled));
+    constraint chk_weight check (netWeightKg <= grossWeightKg or grossWeightKg is null);
+    constraint chk_arrival check (actualArrivalDate >= shipDate or actualArrivalDate is null or shipDate is null);
+    constraint fk_vendor foreign key (vendor) references Vendor (ID);
+    constraint fk_warehouse foreign key (warehouse) references WarehouseMaster (ID);
+    
+    // ========================================
+    // ENHANCED ACTIONS
+    // ========================================
+    
+    action confirm()
+        requires status = #Draft
+        requires count(lines) > 0
+        ensures status = #Confirmed
+        emits InboundShipmentCreated;
+    
+    action markInTransit(trackingNum: String, carrierName: String)
+        requires status = #Confirmed
+        ensures status = #InTransit
+        modifies trackingNumber = trackingNum
+        modifies carrier = carrierName;
+    
+    action recordArrival(dockId: UUID)
+        requires status = #InTransit or status = #Confirmed
+        ensures status = #Arrived
+        modifies actualArrivalDate = $today
+        modifies actualArrivalTime = $now;
+    
+    action startReceiving()
+        requires status = #Arrived
+        requires warehouse.isReceivingActive = true
+        ensures status = #Receiving;
+    
+    action completeReceiving()
+        requires status = #Receiving
+        requires receiptPercent > 0
+        ensures status = #Received
+        emits InboundShipmentReceived;
+    
+    action cancelShipment(reason: String)
+        requires status = #Draft or status = #Confirmed
+        ensures status = #Cancelled
+        modifies remarks = reason;
+}
+
+enum InboundShipmentType {
+    @Core.Label: 'Purchase Order Receipt'
+    PurchaseOrder;
+    @Core.Label: 'Stock Transfer'
+    Transfer;
+    @Core.Label: 'Customer Return'
+    CustomerReturn;
+    @Core.Label: 'Vendor Return'
+    VendorReturn;
+    @Core.Label: 'Cross-Dock'
+    CrossDock;
+    @Core.Label: 'Production Output'
+    Production;
+    @Core.Label: 'Sample'
+    Sample;
+}
+
+enum InboundShipmentStatus {
+    Draft;
+    Confirmed;
+    InTransit;
+    Arrived;
+    Receiving;
+    Received;
+    Closed;
+    Cancelled;
+}
+
+enum ShipmentPriority {
+    Low;
+    Normal;
+    High;
+    Urgent;
+    Rush;
+}
+
+// ============================================================
+// INBOUND SHIPMENT LINE
+// ============================================================
+
+entity InboundShipmentLine {
+    key ID: UUID;
+    
+    lineNumber: Integer;
+    
+    @Core.Mandatory: true
+    item: association [1] to Item;
+    
+    // Expected
+    @Core.Mandatory: true
+    @Core.Label: 'Expected Quantity'
+    expectedQty: Quantity;
+    
+    uom: UnitOfMeasure;
+    
+    // Received
+    @Core.Label: 'Received Quantity'
+    receivedQty: Quantity default 0;
+    
+    @Core.Label: 'Damaged Quantity'
+    damagedQty: Quantity default 0;
+    
+    @Core.Label: 'Rejected Quantity'
+    rejectedQty: Quantity default 0;
+    
+    // Computed
+    virtual pendingQty: Quantity computed = expectedQty - receivedQty - damagedQty - rejectedQty;
+    virtual isFullyReceived: Boolean computed = pendingQty <= 0;
+    virtual receiptPercent: Decimal(5, 2) computed = 
+        case when expectedQty > 0 
+             then round((receivedQty * 100.0) / expectedQty, 2)
+             else 0
+        end;
+    
+    // Tracking
+    batchNumber: BatchNumber;
+    serialNumbers: String(2000);
+    lotNumber: String(50);
+    
+    manufacturingDate: Date;
+    expiryDate: Date;
+    
+    // Quality
+    @Core.Label: 'Requires Inspection'
+    requiresInspection: Boolean default false;
+    
+    inspectionStatus: InspectionStatus default #NotRequired;
+    
+    // PO reference
+    purchaseOrderLineId: UUID;
+    
+    // Costing
+    unitCost: UnitCost;
+    
+    @Core.Computed
+    virtual totalCost: UnitCost computed = receivedQty * unitCost;
+    
+    status: ReceiptLineStatus default #Pending;
+    
+    remarks: String(500);
+    
+    // ========================================
+    // INDEXES & CONSTRAINTS
+    // ========================================
+    
+    index idx_line_item on (item);
+    index idx_line_status on (status);
+    index idx_line_batch on (batchNumber);
+    index idx_line_expiry on (expiryDate);
+    
+    constraint chk_qty_positive check (expectedQty > 0);
+    constraint chk_received_qty check (receivedQty >= 0);
+    constraint chk_expiry check (expiryDate > manufacturingDate or expiryDate is null or manufacturingDate is null);
+}
+
+enum InspectionStatus {
+    NotRequired;
+    Pending;
+    InProgress;
+    Passed;
+    Failed;
+    ConditionalPass;
+}
+
+enum ReceiptLineStatus {
+    Pending;
+    PartiallyReceived;
+    Received;
+    Closed;
+    Cancelled;
+}
+
+// ============================================================
+// GOODS RECEIPT
+// ============================================================
+
+@Core.Description: 'Goods Receipt Document'
+@Tenant.Aware: true
+@Company.Aware: true
+@Core.Immutable: true
+entity GoodsReceipt : Auditable {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Core.Immutable
+    @Sequence.Pattern: 'GR-{company}-{year}{month}{day}-{seq:5}'
+    @Sequence.Scope: #Company
+    receiptNumber: String(50);
+    
+    @Core.Mandatory: true
+    receiptDate: Date default $today;
+    
+    receiptTime: Timestamp default $now;
+    
+    // Source
+    inboundShipment: association [0,1] to InboundShipment;
+    purchaseOrder: association [0,1] to PurchaseOrder;
+    
+    receiptType: ReceiptType;
+    
+    // Warehouse
+    @Core.Mandatory: true
+    warehouse: association [1] to WarehouseMaster;
+    
+    receivingZone: association [0,1] to WarehouseZoneMaster;
+    
+    // Vendor
+    vendor: association [0,1] to Vendor;
+    
+    // Totals
+    @Core.Computed
+    virtual lineCount: Integer computed = count(lines);
+    
+    @Core.Computed
+    virtual totalQuantity: Decimal(18, 3) computed = sum(lines.quantity);
+    
+    @Core.Computed
+    virtual totalValue: Decimal(18, 2) computed = sum(lines.totalValue);
+    
+    // Quality summary
+    @Core.Computed
+    virtual inspectionRequired: Boolean computed = count(lines.requiresInspection) > 0;
+    
+    @Core.Computed
+    virtual damagedItemsCount: Integer computed = sum(case when lines.damagedQty > 0 then 1 else 0 end);
+    
+    // User
+    receivedBy: String(100);
+    
+    // Status
+    status: GoodsReceiptStatus default #Draft;
+    postedAt: Timestamp;
+    postedBy: String(100);
+    
+    // Lines
+    lines: composition [*] of GoodsReceiptLine;
+    
+    remarks: String(2000);
+    
+    // ========================================
+    // INDEXES
+    // ========================================
+    
+    unique index idx_receipt_number on (receiptNumber);
+    index idx_receipt_date on (receiptDate);
+    index idx_receipt_shipment on (inboundShipment);
+    index idx_receipt_po on (purchaseOrder);
+    index idx_receipt_vendor on (vendor);
+    index idx_receipt_warehouse on (warehouse);
+    index idx_receipt_status on (status);
+    
+    // ========================================
+    // CONSTRAINTS
+    // ========================================
+    
+    constraint chk_status check (status in (#Draft, #Posted, #Reversed));
+    constraint fk_warehouse foreign key (warehouse) references WarehouseMaster (ID);
+    
+    // ========================================
+    // ACTIONS
+    // ========================================
+    
+    action post()
+        requires status = #Draft
+        requires count(lines) > 0
+        requires allLinesProcessed = true
+        ensures status = #Posted
+        emits GoodsReceiptPosted;
+    
+    action reverse(reason: String)
+        requires status = #Posted
+        ensures status = #Reversed
+        modifies remarks = reason;
+}
+
+enum ReceiptType {
+    PurchaseOrder;
+    Transfer;
+    Return;
+    Production;
+    Adjustment;
+    Opening;
+}
+
+enum GoodsReceiptStatus {
+    Draft;
+    Posted;
+    Reversed;
+}
+
+// ============================================================
+// GOODS RECEIPT LINE
+// ============================================================
+
+entity GoodsReceiptLine {
+    key ID: UUID;
+    
+    lineNumber: Integer;
+    
+    @Core.Mandatory: true
+    item: association [1] to Item;
+    
+    @Core.Mandatory: true
+    quantity: Quantity;
+    
+    uom: UnitOfMeasure;
+    
+    // Quality
+    damagedQty: Quantity default 0;
+    rejectedQty: Quantity default 0;
+    
+    @Core.Computed
+    virtual acceptedQty: Quantity computed = quantity - damagedQty - rejectedQty;
+    
+    @Core.Label: 'Requires Inspection'
+    requiresInspection: Boolean default false;
+    
+    inspectionStatus: InspectionStatus default #NotRequired;
+    
+    // Tracking
+    batchNumber: BatchNumber;
+    serialNumber: SerialNumber;
+    lotNumber: String(50);
+    
+    manufacturingDate: Date;
+    expiryDate: Date;
+    
+    // Storage location
+    targetZone: association [0,1] to WarehouseZoneMaster;
+    targetBin: association [0,1] to BinLocationMaster;
+    
+    // Costing
+    unitCost: UnitCost;
+    
+    @Core.Computed
+    virtual totalValue: UnitCost computed = acceptedQty * unitCost;
+    
+    // Putaway
+    @Core.Label: 'Putaway Required'
+    requiresPutaway: Boolean default true;
+    
+    putawayStatus: PutawayStatus default #Pending;
+    
+    status: ReceiptLineStatus default #Pending;
+    
+    remarks: String(500);
+    
+    // Source reference
+    shipmentLineId: UUID;
+    purchaseOrderLineId: UUID;
+    
+    // ========================================
+    // INDEXES & CONSTRAINTS
+    // ========================================
+    
+    index idx_grline_item on (item);
+    index idx_grline_batch on (batchNumber);
+    index idx_grline_expiry on (expiryDate);
+    index idx_grline_putaway on (putawayStatus);
+    
+    constraint chk_qty_positive check (quantity > 0);
+    constraint chk_accepted_qty check (acceptedQty >= 0);
+}
+
+enum PutawayStatus {
+    Pending;
+    TaskCreated;
+    InProgress;
+    Completed;
+    Cancelled;
+}
+
+// ============================================================
+// PUTAWAY TASK
+// ============================================================
+
+@Core.Description: 'Putaway Task for Warehouse Workers'
+@Tenant.Aware: true
+entity PutawayTask : Auditable {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Sequence.Pattern: 'PUT-{date}-{seq:5}'
+    taskNumber: String(50);
+    
+    @Core.Mandatory: true
+    taskDate: Date default $today;
+    
+    // Source
+    goodsReceiptLine: association [1] to GoodsReceiptLine;
+    
+    // Item info
+    item: association [1] to Item;
+    
+    @Core.Mandatory: true
+    quantity: Quantity;
+    
+    uom: UnitOfMeasure;
+    
+    // Tracking
+    batchNumber: BatchNumber;
+    serialNumber: SerialNumber;
+    
+    // Source location (staging/receiving)
+    sourceZone: association [1] to WarehouseZoneMaster;
+    sourceBin: association [0,1] to BinLocationMaster;
+    
+    // Target location (suggested)
+    suggestedZone: association [1] to WarehouseZoneMaster;
+    suggestedBin: association [0,1] to BinLocationMaster;
+    
+    // Actual location (can differ from suggested)
+    actualZone: association [0,1] to WarehouseZoneMaster;
+    actualBin: association [0,1] to BinLocationMaster;
+    actualQuantity: Quantity;
+    
+    // Override tracking
+    @Core.Label: 'Location Overridden'
+    isLocationOverridden: Boolean default false;
+    
+    overrideReason: String(200);
+    
+    // Assignment
+    assignedTo: String(100);
+    assignedAt: Timestamp;
+    
+    // Priority
+    priority: TaskPriority default #Normal;
+    
+    @Core.Label: 'Due By'
+    dueByTime: Timestamp;
+    
+    // Timing
+    startedAt: Timestamp;
+    completedAt: Timestamp;
+    
+    @Core.Computed
+    virtual durationMinutes: Integer computed = 
+        case when completedAt is not null and startedAt is not null
+             then DATEDIFF('minute', startedAt, completedAt)
+             else null
+        end;
+    
+    virtual isOverdue: Boolean computed = 
+        status != #Completed and dueByTime is not null and $now > dueByTime;
+    
+    // Status
+    status: TaskStatus default #Open;
+    
+    completedBy: String(100);
+    
+    remarks: String(500);
+    
+    // ========================================
+    // INDEXES
+    // ========================================
+    
+    unique index idx_task_number on (taskNumber);
+    index idx_task_date on (taskDate);
+    index idx_task_assigned on (assignedTo);
+    index idx_task_status on (status);
+    index idx_task_priority on (priority);
+    index idx_task_item on (item);
+    index idx_task_source_bin on (sourceBin);
+    index idx_task_target_bin on (suggestedBin);
+    
+    // ========================================
+    // CONSTRAINTS
+    // ========================================
+    
+    constraint chk_status check (status in (#Open, #Assigned, #InProgress, #Completed, #Cancelled));
+    constraint chk_qty check (quantity > 0);
+    constraint chk_actual_qty check (actualQuantity >= 0 or actualQuantity is null);
+    
+    // ========================================
+    // ACTIONS
+    // ========================================
+    
+    action assign(userId: String)
+        requires status = #Open
+        ensures status = #Assigned
+        modifies assignedTo = userId
+        modifies assignedAt = $now;
+    
+    action startTask()
+        requires status = #Assigned
+        ensures status = #InProgress
+        modifies startedAt = $now;
+    
+    action completeWithSuggestedLocation(qty: Decimal)
+        requires status = #InProgress
+        ensures status = #Completed
+        modifies actualZone = suggestedZone
+        modifies actualBin = suggestedBin
+        modifies actualQuantity = qty
+        modifies completedAt = $now
+        emits PutawayCompleted;
+    
+    action completeWithOverride(zoneId: UUID, binId: UUID, qty: Decimal, reason: String)
+        requires status = #InProgress
+        ensures status = #Completed
+        modifies isLocationOverridden = true
+        modifies overrideReason = reason
+        modifies actualQuantity = qty
+        modifies completedAt = $now
+        emits PutawayCompleted;
+    
+    action cancel(reason: String)
+        requires status != #Completed
+        ensures status = #Cancelled
+        modifies remarks = reason;
+}
+
+enum TaskPriority {
+    Low;
+    Normal;
+    High;
+    Urgent;
+}
+
+enum TaskStatus {
+    Open;
+    Assigned;
+    InProgress;
+    Completed;
+    Cancelled;
+}
+
+// ============================================================
+// INBOUND SERVICE
+// ============================================================
+
+@Core.Description: 'Warehouse Inbound Operations Service'
+service InboundService {
+    
+    // Shipment operations
+    action createInboundShipment(
+        vendorId: UUID,
+        warehouseId: UUID,
+        shipmentType: InboundShipmentType,
+        expectedArrivalDate: Date
+    ) returns InboundShipment
+        requires vendorId is not null
+        requires warehouseId is not null
+        requires expectedArrivalDate is not null;
+    
+    action addShipmentLine(
+        shipmentId: UUID,
+        itemId: UUID,
+        expectedQty: Decimal,
+        batchNumber: String
+    ) returns InboundShipmentLine;
+    
+    // Receiving operations
+    action createGoodsReceipt(shipmentId: UUID) returns GoodsReceipt
+        emits GoodsReceiptPosted;
+    
+    action receiveLineQuantity(
+        shipmentLineId: UUID,
+        receivedQty: Decimal,
+        damagedQty: Decimal,
+        batchNumber: String
+    ) returns GoodsReceiptLine;
+    
+    // Putaway operations
+    action generatePutawayTasks(goodsReceiptId: UUID) returns Integer
+        emits PutawayTaskCreated;
+    
+    action suggestPutawayLocation(itemId: UUID, quantity: Decimal, warehouseId: UUID) returns BinLocationMaster;
+    
+    action bulkAssignTasks(taskIds: array<UUID>, userId: String) returns Integer;
+    
+    // Queries
+    function getExpectedShipments(warehouseId: UUID, dateFrom: Date, dateTo: Date) returns InboundShipment;
+    function getPendingReceipts(warehouseId: UUID) returns GoodsReceipt;
+    function getOpenPutawayTasks(warehouseId: UUID, userId: String) returns PutawayTask;
+    function getOverdueTasks(warehouseId: UUID) returns PutawayTask;
+    
+    // Analytics
+    function getReceivingProductivity(warehouseId: UUID, dateFrom: Date, dateTo: Date) returns ReceivingMetrics;
+    function getPutawayPerformance(warehouseId: UUID, dateFrom: Date, dateTo: Date) returns PutawayMetrics;
+}
+
+// ============================================================
+// ANALYTICS VALUE OBJECTS
+// ============================================================
+
+type ReceivingMetrics : {
+    warehouseId: UUID;
+    periodStart: Date;
+    periodEnd: Date;
+    totalShipmentsReceived: Integer;
+    totalLinesReceived: Integer;
+    totalQuantityReceived: Decimal(18, 3);
+    averageReceivingTimeMinutes: Decimal(8, 2);
+    onTimeArrivalPercent: Decimal(5, 2);
+    damageRate: Decimal(5, 4);
+}
+
+type PutawayMetrics : {
+    warehouseId: UUID;
+    periodStart: Date;
+    periodEnd: Date;
+    totalTasksCompleted: Integer;
+    averageTaskTimeMinutes: Decimal(8, 2);
+    onTimeCompletionPercent: Decimal(5, 2);
+    locationAccuracyPercent: Decimal(5, 2);
+    overridePercent: Decimal(5, 2);
+    topPerformers: array<UserPerformance>;
+}
+
+type UserPerformance : {
+    userId: String(100);
+    userName: String(200);
+    tasksCompleted: Integer;
+    averageTimeMinutes: Decimal(8, 2);
+    accuracyPercent: Decimal(5, 2);
+}
+
+// ============================================================
+// PROJECTION VIEWS
+// ============================================================
+
+define view PendingShipmentsView as
+    select
+        s.ID,
+        s.shipmentNumber,
+        s.shipmentType,
+        s.vendor,
+        s.warehouse,
+        s.expectedArrivalDate,
+        s.expectedTotalQty,
+        s.priority,
+        s.status
+    from InboundShipment as s
+    where s.status in (#Confirmed, #InTransit)
+
+define view ArrivedNotReceivedView as
+    select
+        s.ID,
+        s.shipmentNumber,
+        s.vendor,
+        s.warehouse,
+        s.actualArrivalDate,
+        s.actualArrivalTime,
+        s.expectedTotalQty,
+        s.receivedTotalQty,
+        s.receiptPercent,
+        s.priority
+    from InboundShipment as s
+    where s.status = #Arrived or s.status = #Receiving
+
+define view OpenPutawayTasksView as
+    select
+        t.ID,
+        t.taskNumber,
+        t.item,
+        t.quantity,
+        t.sourceZone,
+        t.sourceBin,
+        t.suggestedZone,
+        t.suggestedBin,
+        t.assignedTo,
+        t.priority,
+        t.dueByTime,
+        t.isOverdue,
+        t.status
+    from PutawayTask as t
+    where t.status in (#Open, #Assigned, #InProgress)
+
+define view ExpiringItemsReceived as
+    select
+        grl.item,
+        grl.batchNumber,
+        grl.expiryDate,
+        grl.quantity as receivedQty,
+        grl.targetZone,
+        grl.targetBin,
+        gr.receiptDate,
+        DATEDIFF('day', $today, grl.expiryDate) as daysToExpiry
+    from GoodsReceiptLine as grl
+    inner join GoodsReceipt as gr on gr.ID = grl.ID
+    where grl.expiryDate is not null
+      and grl.expiryDate <= add_days($today, 90)
+      and gr.status = #Posted
+    order by grl.expiryDate asc
+

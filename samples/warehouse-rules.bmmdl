@@ -1,0 +1,926 @@
+﻿// ============================================================
+// BMMDL Sample: Warehouse - Business Rules & Analytics
+// Advanced features: complex rules, triggers, computed analytics
+// ============================================================
+
+namespace Warehouse;
+
+using Common;
+
+// ============================================================
+// INBOUND VALIDATION RULES
+// ============================================================
+
+rule InboundShipmentValidation for InboundShipment on before create, before update {
+    // Validate vendor is active
+    validate vendor.status = #Active
+        message 'Vendor must be active to create shipments'
+        severity error;
+    
+    // Validate warehouse is receiving
+    validate warehouse.status = #Active
+        message 'Warehouse must be active'
+        severity error;
+    
+    // Validate has lines
+    validate count(lines) > 0
+        message 'Shipment must have at least one line'
+        severity error;
+    
+    // Validate expected arrival is in future for new shipments
+    when status = #Draft then {
+        validate expectedArrivalDate >= $today
+            message 'Expected arrival date must be today or in the future'
+            severity warning;
+    }
+}
+
+rule InboundShipmentWeightValidation for InboundShipment on before update {
+    // Validate net weight doesn't exceed gross weight
+    when grossWeightKg is not null and netWeightKg is not null then {
+        validate netWeightKg <= grossWeightKg
+            message 'Net weight cannot exceed gross weight'
+            severity error;
+    }
+}
+
+rule InboundLineExpiryValidation for InboundShipmentLine on before create, before update {
+    // Validate expiry date is after manufacturing date
+    when expiryDate is not null and manufacturingDate is not null then {
+        validate expiryDate > manufacturingDate
+            message 'Expiry date must be after manufacturing date'
+            severity error;
+    }
+    
+    // Warn if item is close to expiry
+    when expiryDate is not null then {
+        when DATEDIFF('day', $today, expiryDate) < 30 then {
+            validate false
+                message 'Warning: Item expires within 30 days'
+                severity warning;
+        }
+    }
+    
+    // Auto-flag for inspection if hazmat
+    when item.isHazmat = true then {
+        compute requiresInspection = true;
+        compute inspectionStatus = #Pending;
+    }
+}
+
+// ============================================================
+// GOODS RECEIPT RULES
+// ============================================================
+
+rule GoodsReceiptCalculation for GoodsReceiptLine on before create, before update {
+    // Calculate accepted quantity
+    compute acceptedQty = quantity - damagedQty - rejectedQty;
+    
+    // Calculate total value
+    compute totalValue = acceptedQty * unitCost;
+    
+    // Auto-set inspection for specific item categories
+    when item.itemCategory.requiresInspection = true then {
+        compute requiresInspection = true;
+    }
+    
+    // Auto-set inspection for cold chain items
+    when item.requiresColdChain = true then {
+        compute requiresInspection = true;
+    }
+}
+
+rule GoodsReceiptPosting for GoodsReceipt on before update {
+    // Validate all lines are processed before posting
+    when $old.status = #Draft and status = #Posted then {
+        validate allLinesProcessed = true
+            message 'All lines must be processed before posting'
+            severity error;
+        
+        // Validate no pending inspections
+        validate allInspectionsComplete = true
+            message 'All required inspections must be completed before posting'
+            severity error;
+        
+        // Set posted timestamp
+        compute postedAt = $now;
+    }
+}
+
+// ============================================================
+// PUTAWAY RULES
+// ============================================================
+
+rule PutawayTaskValidation for PutawayTask on before create {
+    // Validate source bin has the item
+    validate sourceBin.isOccupied = true
+        message 'Source bin is empty'
+        severity error;
+    
+    // Validate target bin can accept item
+    when suggestedBin.fixedItemId is not null then {
+        validate suggestedBin.fixedItemId = item.ID
+            message 'Target bin is assigned to a different item'
+            severity error;
+    }
+    
+    // Validate target bin is not blocked
+    validate suggestedBin.status != #Blocked and suggestedBin.status != #Damaged
+        message 'Target bin is not available'
+        severity error;
+}
+
+rule PutawayLocationSuggestion for PutawayTask on before create {
+    // Auto-suggest zone based on item category
+    when suggestedZone is null then {
+        // Hazmat items go to hazmat zone
+        when item.isHazmat = true then {
+            // Logic would select first hazmat zone
+        }
+        
+        // Cold chain items go to temperature controlled zone
+        when item.requiresColdChain = true then {
+            // Logic would select appropriate temp zone
+        }
+    }
+}
+
+rule PutawayCompletion for PutawayTask on after update {
+    // Update bin status when putaway completed
+    when $old.status != #Completed and status = #Completed then {
+        // Update source bin
+        compute sourceBin.currentItemCount = sourceBin.currentItemCount - 1;
+        when sourceBin.currentItemCount <= 0 then {
+            compute sourceBin.isOccupied = false;
+            compute sourceBin.status = #Available;
+        }
+        
+        // Update target bin
+        compute actualBin.isOccupied = true;
+        compute actualBin.currentItemCount = actualBin.currentItemCount + 1;
+        compute actualBin.currentWeightKg = actualBin.currentWeightKg + (actualQuantity * item.unitWeightKg);
+    }
+}
+
+// ============================================================
+// OUTBOUND ORDER RULES
+// ============================================================
+
+rule OutboundOrderValidation for OutboundOrder on before create, before update {
+    // Validate warehouse is shipping
+    when status = #Released then {
+        validate warehouse.isShippingActive = true
+            message 'Warehouse shipping is currently disabled'
+            severity error;
+    }
+    
+    // Validate has lines
+    validate count(lines) > 0
+        message 'Order must have at least one line'
+        severity error;
+    
+    // Validate required ship date
+    when requiredShipDate is not null and promisedDeliveryDate is not null then {
+        validate promisedDeliveryDate >= requiredShipDate
+            message 'Promised delivery cannot be before required ship date'
+            severity warning;
+    }
+}
+
+rule OutboundOrderCalculation for OutboundOrder on before create, before update {
+    // Calculate totals
+    compute lineCount = count(lines);
+    compute totalOrderedQty = sum(lines.orderedQty);
+    compute totalAllocatedQty = sum(lines.allocatedQty);
+    compute totalPickedQty = sum(lines.pickedQty);
+    compute totalShippedQty = sum(lines.shippedQty);
+    compute totalWeightKg = sum(lines.lineWeightKg);
+    compute totalVolumeCubicM = sum(lines.lineVolumeCubicM);
+}
+
+rule OutboundOrderStatusTransition for OutboundOrder on before update {
+    // Validate status transitions
+    when $old.status = #Open and status = #Released then {
+        validate count(lines) > 0
+            message 'Cannot release order with no lines'
+            severity error;
+        
+        compute releasedAt = $now;
+    }
+    
+    when $old.status = #Released and status = #Allocated then {
+        validate allocationPercent > 0
+            message 'Order must have some allocation before marking as allocated'
+            severity error;
+        
+        compute allocatedAt = $now;
+    }
+    
+    // Cannot go backwards from picked
+    when $old.status = #Picked and status in (#Open, #Released, #Allocated) then {
+        validate false
+            message 'Cannot revert order from Picked status'
+            severity error;
+    }
+    
+    // Shipped to open not allowed
+    when $old.status = #Shipped and status != #Completed then {
+        validate false
+            message 'Shipped orders can only be marked as Completed'
+            severity error;
+    }
+}
+
+rule OutboundLineCalculation for OutboundOrderLine on before create, before update {
+    // Calculate weight and volume
+    when item.unitWeightKg is not null then {
+        compute unitWeightKg = item.unitWeightKg;
+        compute lineWeightKg = orderedQty * unitWeightKg;
+    }
+    
+    when item.unitVolumeCubicM is not null then {
+        compute unitVolumeCubicM = item.unitVolumeCubicM;
+        compute lineVolumeCubicM = orderedQty * unitVolumeCubicM;
+    }
+}
+
+// ============================================================
+// PICK WAVE RULES
+// ============================================================
+
+rule WaveValidation for PickWave on before create, before update {
+    // Validate warehouse is active
+    validate warehouse.status = #Active
+        message 'Warehouse must be active'
+        severity error;
+}
+
+rule WaveCalculation for PickWave on before create, before update {
+    // Calculate metrics
+    compute orderCount = count(orders);
+    compute totalLines = sum(orders.lineCount);
+    compute totalQuantity = sum(orders.totalOrderedQty);
+    compute totalPickedQty = sum(orders.totalPickedQty);
+    compute pickTaskCount = count(pickTasks);
+    compute completedTaskCount = sum(case when pickTasks.status = #Completed then 1 else 0 end);
+}
+
+rule WaveRelease for PickWave on before update {
+    // Validate before release
+    when $old.status = #Draft and status = #Released then {
+        validate orderCount > 0
+            message 'Wave must have at least one order'
+            severity error;
+        
+        // Auto-generate pick tasks on release
+        compute releasedAt = $now;
+    }
+}
+
+rule WaveCompletion for PickWave on after update {
+    // Update order statuses when wave completes
+    when $old.status = #InProgress and status = #Completed then {
+        // All orders in wave should be marked as Picked
+        // This would typically trigger updates to child orders
+    }
+}
+
+// ============================================================
+// PICK TASK RULES
+// ============================================================
+
+rule PickTaskValidation for PickTask on before create {
+    // Validate bin has stock
+    validate pickBin.isOccupied = true
+        message 'Pick bin is empty'
+        severity error;
+    
+    // Validate bin is not blocked
+    validate pickBin.status != #Blocked
+        message 'Pick bin is blocked'
+        severity error;
+}
+
+rule PickTaskAssignment for PickTask on before update {
+    // Validate assignment
+    when $old.status = #Open and status = #Assigned then {
+        validate assignedTo is not null
+            message 'Task must be assigned to a picker'
+            severity error;
+        
+        compute assignedAt = $now;
+    }
+}
+
+rule PickTaskCompletion for PickTask on after update {
+    // Update inventory when pick completed
+    when $old.status = #InProgress and status in (#Completed, #ShortPicked) then {
+        // Reduce bin quantity
+        compute pickBin.currentItemCount = pickBin.currentItemCount - 1;
+        
+        // Update order line picked quantity
+        when outboundOrderLine is not null then {
+            compute outboundOrderLine.pickedQty = outboundOrderLine.pickedQty + pickedQuantity;
+            when shortQuantity > 0 then {
+                compute outboundOrderLine.shortQty = outboundOrderLine.shortQty + shortQuantity;
+                compute outboundOrderLine.status = #ShortPicked;
+            }
+        }
+        
+        // Mark bin as available if empty
+        when pickBin.currentItemCount <= 0 then {
+            compute pickBin.isOccupied = false;
+            compute pickBin.status = #Available;
+        }
+    }
+}
+
+rule PickShortageTracking for PickTask on after update {
+    // Alert on short picks
+    when status = #ShortPicked and shortQuantity > 0 then {
+        // Trigger replenishment analysis
+        // Call InventoryService.CheckReplenishment(item.ID, pickZone.ID)
+    }
+}
+
+// ============================================================
+// WAREHOUSE CAPACITY RULES
+// ============================================================
+
+rule WarehouseCapacityMonitoring for WarehouseMaster on after update {
+    // Alert when nearing capacity
+    when usagePercent >= 85 and $old.usagePercent < 85 then {
+        call NotificationService.SendCapacityAlert(ID, warehouseCode, usagePercent);
+    }
+    
+    // Critical alert when over 95%
+    when usagePercent >= 95 and $old.usagePercent < 95 then {
+        call NotificationService.SendCriticalCapacityAlert(ID, warehouseCode, usagePercent);
+    }
+}
+
+rule ZoneCapacityMonitoring for WarehouseZoneMaster on after update {
+    // Update parent warehouse pallet count
+    when currentPalletCount != $old.currentPalletCount then {
+        // Recalculate warehouse totals
+    }
+    
+    // Alert when zone is near capacity
+    when usagePercent >= 90 and $old.usagePercent < 90 then {
+        call NotificationService.SendZoneCapacityAlert(ID, zoneCode, usagePercent);
+    }
+    
+    // Auto-mark zone as full
+    when usagePercent >= 98 then {
+        compute status = #Full;
+    }
+}
+
+rule BinWeightValidation for BinLocationMaster on before update {
+    // Prevent overweight conditions
+    when currentWeightKg > maxWeightKg then {
+        validate false
+            message 'Bin weight limit exceeded'
+            severity warning;
+    }
+}
+
+// ============================================================
+// INVENTORY AGING RULES
+// ============================================================
+
+rule ExpiryDateMonitoring for GoodsReceiptLine on after create {
+    // Flag items expiring soon
+    when expiryDate is not null then {
+        when DATEDIFF('day', $today, expiryDate) <= 30 then {
+            call NotificationService.SendExpiryWarning(item.ID, batchNumber, expiryDate, 30);
+        }
+        
+        when DATEDIFF('day', $today, expiryDate) <= 7 then {
+            call NotificationService.SendUrgentExpiryAlert(item.ID, batchNumber, expiryDate, 7);
+        }
+    }
+}
+
+// ============================================================
+// FIFO ENFORCEMENT RULES
+// ============================================================
+
+rule FIFOAllocation for OutboundOrderLine on before update {
+    // Enforce FIFO for allocation
+    when allocatedQty > 0 and allocatedBatch is null then {
+        // Auto-select oldest batch
+        // This would query inventory and select based on manufacturing date
+    }
+}
+
+// ============================================================
+// ANALYTICS VIEWS
+// ============================================================
+
+define view WarehouseKPIDashboard as
+    select
+        w.warehouseCode,
+        w.warehouseName,
+        w.usagePercent as capacityUtilization,
+        w.currentPalletCount,
+        w.maxPalletPositions,
+        count(z.ID) as zoneCount,
+        sum(case when z.usagePercent >= 90 then 1 else 0 end) as criticalZones,
+        w.isReceivingActive,
+        w.isShippingActive,
+        w.status
+    from WarehouseMaster as w
+    left join WarehouseZoneMaster as z on z.ID = w.ID
+    where w.status = #Active
+    group by w.warehouseCode, w.warehouseName, w.usagePercent, w.currentPalletCount, 
+             w.maxPalletPositions, w.isReceivingActive, w.isShippingActive, w.status
+
+define view DailyReceivingMetrics as
+    select
+        gr.warehouse,
+        gr.receiptDate,
+        count(gr.ID) as receiptCount,
+        sum(grl.quantity) as totalQuantity,
+        sum(grl.damagedQty) as damagedQuantity,
+        sum(grl.rejectedQty) as rejectedQuantity,
+        round(sum(grl.damagedQty + grl.rejectedQty) * 100.0 / nullif(sum(grl.quantity), 0), 2) as rejectRate,
+        count(distinct grl.item) as uniqueItems
+    from GoodsReceipt as gr
+    inner join GoodsReceiptLine as grl on grl.ID = gr.ID
+    where gr.status = #Posted
+    group by gr.warehouse, gr.receiptDate
+
+define view DailyPickingMetrics as
+    select
+        pt.pickZone,
+        pt.taskDate as pickDate,
+        count(pt.ID) as taskCount,
+        sum(pt.pickedQuantity) as totalPicked,
+        sum(pt.shortQuantity) as totalShort,
+        round(sum(pt.shortQuantity) * 100.0 / nullif(sum(pt.quantity), 0), 2) as shortRate,
+        avg(pt.durationMinutes) as avgPickTimeMinutes,
+        count(distinct pt.assignedTo) as pickerCount
+    from PickTask as pt
+    where pt.status in (#Completed, #ShortPicked)
+    group by pt.pickZone, pt.taskDate
+
+define view PutawayPerformanceMetrics as
+    select
+        pt.assignedTo as userId,
+        count(pt.ID) as totalTasks,
+        sum(pt.actualQuantity) as totalQuantity,
+        avg(pt.durationMinutes) as avgDurationMinutes,
+        sum(case when pt.isLocationOverridden = true then 1 else 0 end) as overrideCount,
+        round(sum(case when pt.isLocationOverridden = true then 1 else 0 end) * 100.0 / count(pt.ID), 2) as overridePercent
+    from PutawayTask as pt
+    where pt.status = #Completed
+    group by pt.assignedTo
+
+define view PickerProductivityRanking as
+    select
+        pt.assignedTo as pickerId,
+        count(pt.ID) as tasksCompleted,
+        sum(pt.pickedQuantity) as totalPicked,
+        avg(pt.durationMinutes) as avgTimeMinutes,
+        round(sum(pt.pickedQuantity) / nullif(sum(pt.durationMinutes), 0) * 60, 2) as unitsPerHour,
+        round(sum(pt.shortQuantity) * 100.0 / nullif(sum(pt.quantity), 0), 2) as shortPercent
+    from PickTask as pt
+    where pt.status in (#Completed, #ShortPicked)
+      and pt.completedAt >= add_days($now, -30)
+    group by pt.assignedTo
+    order by unitsPerHour desc
+
+define view InventoryAgingReport as
+    select
+        grl.item,
+        grl.batchNumber,
+        grl.targetZone,
+        grl.targetBin,
+        gr.receiptDate,
+        grl.manufacturingDate,
+        grl.expiryDate,
+        DATEDIFF('day', gr.receiptDate, $today) as daysInWarehouse,
+        DATEDIFF('day', $today, grl.expiryDate) as daysToExpiry,
+        grl.acceptedQty as quantity,
+        grl.unitCost,
+        grl.totalValue,
+        case 
+            when DATEDIFF('day', $today, grl.expiryDate) <= 0 then 'Expired'
+            when DATEDIFF('day', $today, grl.expiryDate) <= 7 then 'Critical'
+            when DATEDIFF('day', $today, grl.expiryDate) <= 30 then 'Warning'
+            when DATEDIFF('day', $today, grl.expiryDate) <= 90 then 'Monitor'
+            else 'Normal'
+        end as expiryStatus
+    from GoodsReceiptLine as grl
+    inner join GoodsReceipt as gr on gr.ID = grl.ID
+    where gr.status = #Posted
+      and grl.expiryDate is not null
+    order by grl.expiryDate asc
+
+define view ShortPickAnalysisByItem as
+    select
+        pt.item,
+        i.itemCode,
+        i.itemName,
+        count(pt.ID) as shortPickCount,
+        sum(pt.shortQuantity) as totalShortQty,
+        sum(pt.quantity) as totalRequestedQty,
+        round(sum(pt.shortQuantity) * 100.0 / sum(pt.quantity), 2) as shortRate,
+        count(distinct pt.pickZone) as affectedZones
+    from PickTask as pt
+    inner join Item as i on i.ID = pt.item
+    where pt.status = #ShortPicked
+      and pt.shortQuantity > 0
+    group by pt.item, i.itemCode, i.itemName
+    having count(pt.ID) >= 3
+    order by shortRate desc
+
+define view OnTimeShippingMetrics as
+    select
+        oo.warehouse,
+        oo.orderType,
+        count(oo.ID) as totalOrders,
+        sum(case when oo.isLate = false then 1 else 0 end) as onTimeOrders,
+        sum(case when oo.isLate = true then 1 else 0 end) as lateOrders,
+        round(sum(case when oo.isLate = false then 1 else 0 end) * 100.0 / count(oo.ID), 2) as onTimePercent,
+        avg(oo.daysLate) as avgDaysLate,
+        sum(case when oo.isShortShip = true then 1 else 0 end) as shortShipOrders,
+        round(sum(case when oo.isShortShip = true then 1 else 0 end) * 100.0 / count(oo.ID), 2) as shortShipPercent
+    from OutboundOrder as oo
+    where oo.status in (#Shipped, #Completed)
+      and oo.actualShipDate is not null
+    group by oo.warehouse, oo.orderType
+
+define view ZoneActivityHeatmap as
+    select
+        z.ID as zoneId,
+        z.zoneCode,
+        z.zoneName,
+        z.zoneType,
+        z.usagePercent as capacityUsage,
+        coalesce(put.putawayCount, 0) as putawayCount,
+        coalesce(pick.pickCount, 0) as pickCount,
+        coalesce(put.putawayCount, 0) + coalesce(pick.pickCount, 0) as totalActivity,
+        case 
+            when coalesce(put.putawayCount, 0) + coalesce(pick.pickCount, 0) >= 100 then 'Hot'
+            when coalesce(put.putawayCount, 0) + coalesce(pick.pickCount, 0) >= 50 then 'Warm'
+            when coalesce(put.putawayCount, 0) + coalesce(pick.pickCount, 0) >= 10 then 'Cool'
+            else 'Cold'
+        end as activityLevel
+    from WarehouseZoneMaster as z
+    left join (
+        select sourceZone, count(*) as putawayCount 
+        from PutawayTask 
+        where status = #Completed and completedAt >= add_days($now, -7)
+        group by sourceZone
+    ) as put on put.sourceZone = z.ID
+    left join (
+        select pickZone, count(*) as pickCount 
+        from PickTask 
+        where status in (#Completed, #ShortPicked) and completedAt >= add_days($now, -7)
+        group by pickZone
+    ) as pick on pick.pickZone = z.ID
+    where z.status = #Active
+
+// ============================================================
+// WAREHOUSE ANALYTICS SERVICE
+// ============================================================
+
+@Core.Description: 'Warehouse Analytics and Reporting Service'
+service WarehouseAnalyticsService {
+    
+    // Dashboard KPIs
+    function getWarehouseKPIs(warehouseId: UUID) returns WarehouseKPISummary;
+    function getOperationalDashboard(warehouseId: UUID, asOfDate: Date) returns OperationalDashboard;
+    
+    // Capacity analytics
+    function getCapacityTrend(warehouseId: UUID, days: Integer) returns CapacityTrendReport;
+    function getZoneUtilization(warehouseId: UUID) returns array<ZoneUtilizationMetric>;
+    function getBinUtilization(zoneId: UUID) returns array<BinUtilizationMetric>;
+    
+    // Receiving analytics
+    function getReceivingMetrics(warehouseId: UUID, dateFrom: Date, dateTo: Date) returns ReceivingAnalytics;
+    function getVendorPerformance(warehouseId: UUID, dateFrom: Date, dateTo: Date) returns array<VendorReceivingMetric>;
+    
+    // Picking analytics
+    function getPickingMetrics(warehouseId: UUID, dateFrom: Date, dateTo: Date) returns PickingAnalytics;
+    function getPickerLeaderboard(warehouseId: UUID, dateFrom: Date, dateTo: Date) returns array<PickerRanking>;
+    function getShortPickAnalysis(warehouseId: UUID, dateFrom: Date, dateTo: Date) returns ShortPickAnalysis;
+    
+    // Shipping analytics
+    function getShippingMetrics(warehouseId: UUID, dateFrom: Date, dateTo: Date) returns ShippingAnalytics;
+    function getCarrierPerformance(warehouseId: UUID, dateFrom: Date, dateTo: Date) returns array<CarrierMetric>;
+    function getOnTimeDeliveryReport(warehouseId: UUID, dateFrom: Date, dateTo: Date) returns OnTimeDeliveryReport;
+    
+    // Inventory analytics
+    function getInventoryAgingReport(warehouseId: UUID) returns InventoryAgingAnalysis;
+    function getSlowMovingItems(warehouseId: UUID, thresholdDays: Integer) returns array<SlowMovingItem>;
+    function getExpiringInventory(warehouseId: UUID, thresholdDays: Integer) returns array<ExpiringInventoryItem>;
+    
+    // Productivity analytics
+    function getLaberProductivity(warehouseId: UUID, dateFrom: Date, dateTo: Date) returns LaborProductivityReport;
+    function getZoneActivityHeatmap(warehouseId: UUID) returns ZoneHeatmapData;
+}
+
+// ============================================================
+// ANALYTICS VALUE OBJECTS
+// ============================================================
+
+type WarehouseKPISummary : {
+    warehouseId: UUID;
+    warehouseCode: String(20);
+    asOfDate: DateTime;
+    capacityUtilization: Decimal(5, 2);
+    receivingTodayCount: Integer;
+    shippingTodayCount: Integer;
+    openPickTasks: Integer;
+    overdueOrders: Integer;
+    criticalZoneCount: Integer;
+    expiringItemsCount: Integer;
+}
+
+type OperationalDashboard : {
+    warehouseId: UUID;
+    reportDate: Date;
+    receiving: ReceivingSummary;
+    shipping: ShippingSummary;
+    picking: PickingSummary;
+    capacity: CapacitySummary;
+    alerts: array<OperationalAlert>;
+}
+
+type ReceivingSummary : {
+    shipmentsExpected: Integer;
+    shipmentsReceived: Integer;
+    linesReceived: Integer;
+    quantityReceived: Decimal(18, 3);
+    pendingPutaway: Integer;
+}
+
+type ShippingSummary : {
+    ordersToShip: Integer;
+    ordersShipped: Integer;
+    linesShipped: Integer;
+    quantityShipped: Decimal(18, 3);
+    lateOrders: Integer;
+}
+
+type PickingSummary : {
+    activeWaves: Integer;
+    openTasks: Integer;
+    completedTasks: Integer;
+    averagePickTimeMinutes: Decimal(8, 2);
+    shortPickRate: Decimal(5, 2);
+}
+
+type CapacitySummary : {
+    overallUtilization: Decimal(5, 2);
+    criticalZones: Integer;
+    availablePositions: Integer;
+    inboundPending: Integer;
+}
+
+type OperationalAlert : {
+    alertType: String(50);
+    alertSeverity: String(20);
+    alertMessage: String(500);
+    entityId: UUID;
+    entityType: String(50);
+    alertTimestamp: DateTime
+}
+
+type CapacityTrendReport : {
+    warehouseId: UUID;
+    periodStart: Date;
+    periodEnd: Date;
+    dailyUtilization: array<DailyCapacity>;
+    averageUtilization: Decimal(5, 2);
+    peakUtilization: Decimal(5, 2);
+    peakDate: Date;
+}
+
+type DailyCapacity : {
+    reportDate: Date;
+    utilization: Decimal(5, 2);
+    availablePositions: Integer;
+    receivingVolume: Decimal(18, 3);
+    shippingVolume: Decimal(18, 3);
+}
+
+type ZoneUtilizationMetric : {
+    zoneId: UUID;
+    zoneCode: String(20);
+    zoneName: String(100);
+    zoneType: String(50);
+    utilization: Decimal(5, 2);
+    usedPositions: Integer;
+    totalPositions: Integer;
+    activityScore: Integer;
+}
+
+type BinUtilizationMetric : {
+    binId: UUID;
+    binCode: String(30);
+    isOccupied: Boolean;
+    weightUtilization: Decimal(5, 2);
+    itemCount: Integer;
+    lastActivity: DateTime;
+}
+
+type ReceivingAnalytics : {
+    warehouseId: UUID;
+    periodStart: Date;
+    periodEnd: Date;
+    totalShipments: Integer;
+    totalLines: Integer;
+    totalQuantity: Decimal(18, 3);
+    averageReceiveTimeMinutes: Decimal(8, 2);
+    averagePutawayTimeMinutes: Decimal(8, 2);
+    damageRate: Decimal(5, 4);
+    rejectRate: Decimal(5, 4);
+    onTimeArrivalRate: Decimal(5, 2);
+}
+
+type VendorReceivingMetric : {
+    vendorId: UUID;
+    vendorCode: String(50);
+    vendorName: String(200);
+    shipmentCount: Integer;
+    lineCount: Integer;
+    quantityReceived: Decimal(18, 3);
+    damageRate: Decimal(5, 4);
+    onTimeRate: Decimal(5, 2);
+    qualityScore: Decimal(5, 2);
+}
+
+type PickingAnalytics : {
+    warehouseId: UUID;
+    periodStart: Date;
+    periodEnd: Date;
+    totalTasks: Integer;
+    totalLinesPicked: Integer;
+    totalQuantityPicked: Decimal(18, 3);
+    averagePickTimeMinutes: Decimal(8, 2);
+    linesPerHour: Decimal(8, 2);
+    pickAccuracy: Decimal(5, 2);
+    shortPickRate: Decimal(5, 2);
+    activePickers: Integer;
+}
+
+type PickerRanking : {
+    ranking: Integer;
+    pickerId: String(100);
+    pickerName: String(200);
+    tasksCompleted: Integer;
+    quantityPicked: Decimal(18, 3);
+    averageTimeMinutes: Decimal(8, 2);
+    unitsPerHour: Decimal(8, 2);
+    accuracy: Decimal(5, 2);
+    shortPickRate: Decimal(5, 2);
+}
+
+type ShortPickAnalysis : {
+    warehouseId: UUID;
+    periodStart: Date;
+    periodEnd: Date;
+    totalShortPicks: Integer;
+    totalShortQuantity: Decimal(18, 3);
+    overallShortRate: Decimal(5, 2);
+    byReason: array<ShortPickReason>;
+    byItem: array<ShortPickByItem>;
+    byZone: array<ShortPickByZone>;
+    recommendations: array<String>;
+}
+
+type ShortPickByItem : {
+    itemId: UUID;
+    itemCode: String(50);
+    itemName: String(200);
+    shortCount: Integer;
+    shortQuantity: Decimal(18, 3);
+    shortRate: Decimal(5, 2);
+}
+
+type ShortPickByZone : {
+    zoneId: UUID;
+    zoneCode: String(20);
+    shortCount: Integer;
+    shortQuantity: Decimal(18, 3);
+    shortRate: Decimal(5, 2);
+}
+
+type ShippingAnalytics : {
+    warehouseId: UUID;
+    periodStart: Date;
+    periodEnd: Date;
+    totalOrders: Integer;
+    totalLinesShipped: Integer;
+    totalQuantityShipped: Decimal(18, 3);
+    totalPackages: Integer;
+    totalWeightKg: Decimal(12, 3);
+    onTimeShipRate: Decimal(5, 2);
+    shortShipRate: Decimal(5, 2);
+    averageOrderProcessingMinutes: Decimal(8, 2);
+}
+
+type CarrierMetric : {
+    carrier: String(100);
+    shipmentCount: Integer;
+    packageCount: Integer;
+    totalWeightKg: Decimal(12, 3);
+    onTimeDeliveryRate: Decimal(5, 2);
+    averageCostPerKg: Decimal(10, 2);
+    claims: Integer;
+}
+
+type OnTimeDeliveryReport : {
+    warehouseId: UUID;
+    periodStart: Date;
+    periodEnd: Date;
+    totalOrders: Integer;
+    onTimeOrders: Integer;
+    lateOrders: Integer;
+    onTimeRate: Decimal(5, 2);
+    averageDaysLate: Decimal(5, 2);
+    byServiceLevel: array<ServiceLevelMetric>;
+    byCarrier: array<CarrierOnTimeMetric>;
+}
+
+type ServiceLevelMetric : {
+    serviceLevel: String(50);
+    orderCount: Integer;
+    onTimeRate: Decimal(5, 2);
+}
+
+type CarrierOnTimeMetric : {
+    carrier: String(100);
+    orderCount: Integer;
+    onTimeRate: Decimal(5, 2);
+    averageDaysLate: Decimal(5, 2);
+}
+
+type InventoryAgingAnalysis : {
+    warehouseId: UUID;
+    asOfDate: Date;
+    totalItems: Integer;
+    totalValue: Decimal(18, 2);
+    agingBuckets: array<AgingBucket>;
+    expiringItems: array<ExpiringInventoryItem>;
+    slowMovingValue: Decimal(18, 2);
+}
+
+type AgingBucket : {
+    bucketName: String(50);
+    minDays: Integer;
+    maxDays: Integer;
+    itemCount: Integer;
+    totalValue: Decimal(18, 2);
+    percentOfTotal: Decimal(5, 2);
+}
+
+type ExpiringInventoryItem : {
+    itemId: UUID;
+    itemCode: String(50);
+    itemName: String(200);
+    batchNumber: String(50);
+    expiryDate: Date;
+    daysToExpiry: Integer;
+    quantity: Decimal(18, 3);
+    value: Decimal(18, 2);
+    zone: String(20);
+    bin: String(30);
+}
+
+type SlowMovingItem : {
+    itemId: UUID;
+    itemCode: String(50);
+    itemName: String(200);
+    lastMovementDate: Date;
+    daysSinceMovement: Integer;
+    currentStock: Decimal(18, 3);
+    stockValue: Decimal(18, 2);
+    suggestedAction: String(100);
+}
+
+type LaborProductivityReport : {
+    warehouseId: UUID;
+    periodStart: Date;
+    periodEnd: Date;
+    totalHours: Decimal(10, 2);
+    receiving: LaborActivityMetric;
+    putaway: LaborActivityMetric;
+    picking: LaborActivityMetric;
+    packing: LaborActivityMetric;
+    overallUnitsPerHour: Decimal(8, 2);
+}
+
+type LaborActivityMetric : {
+    activityType: String(50);
+    totalTasks: Integer;
+    totalUnits: Decimal(18, 3);
+    totalHours: Decimal(10, 2);
+    unitsPerHour: Decimal(8, 2);
+    workerCount: Integer;
+}
+

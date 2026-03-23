@@ -1,0 +1,350 @@
+// ============================================================
+// BMMDL Sample: HR - Views and Services (Complex SQL)
+// Domain: Human Resources
+// Coverage: Complex aggregates, CASE, date functions, joins
+// ============================================================
+
+namespace HR;
+
+// ============================================================
+// EMPLOYEE ANALYTICS VIEWS
+// ============================================================
+
+@Core.Description: 'Employee directory with computed fields'
+define view EmployeeDirectory as
+    select
+        emp.ID,
+        emp.employeeCode,
+        concat(emp.firstName, ' ', emp.lastName),
+        emp.displayName,
+        emp.workEmail,
+        emp.workPhone,
+        dept.name,
+        pos.title,
+        mgr.displayName,
+        emp.employmentStatus,
+        emp.employmentType,
+        emp.hireDate,
+        datediff($today, emp.hireDate) / 365,
+        case emp.employmentStatus
+            when #Active then 'Active'
+            when #OnLeave then 'On Leave'
+            when #Suspended then 'Suspended'
+            when #Terminated then 'Terminated'
+            when #Retired then 'Retired'
+            else 'Unknown'
+        end,
+        emp.photoUrl
+    from Employee as emp
+    inner join Department as dept on emp.departmentID = dept.ID
+    inner join Position as pos on emp.positionID = pos.ID
+    left join Employee as mgr on emp.reportingManagerID = mgr.ID
+    where emp.isDeleted = false
+
+@Core.Description: 'Department headcount summary'
+define view DepartmentHeadcount as
+    select
+        dept.ID,
+        dept.code,
+        dept.name,
+        count(emp.ID),
+        count(emp.ID where emp.employmentType = #FullTime),
+        count(emp.ID where emp.employmentType = #PartTime),
+        count(emp.ID where emp.employmentType = #Contract),
+        count(emp.ID where emp.employmentType = #Intern),
+        avg(datediff($today, emp.hireDate) / 365),
+        sum(emp.currentSalary),
+        avg(emp.currentSalary),
+        min(emp.currentSalary),
+        max(emp.currentSalary)
+    from Department as dept
+    left join Employee as emp on emp.departmentID = dept.ID and emp.employmentStatus = #Active
+    where dept.isActive = true
+    group by dept.ID, dept.code, dept.name
+
+@Core.Description: 'Employee tenure analysis'
+define view TenureAnalysis as
+    select
+        emp.ID,
+        emp.employeeCode,
+        emp.displayName,
+        dept.name,
+        pos.title,
+        emp.hireDate,
+        datediff($today, emp.hireDate),
+        datediff($today, emp.hireDate) / 365,
+        case
+            when datediff($today, emp.hireDate) < 365 then '< 1 Year'
+            when datediff($today, emp.hireDate) < 1095 then '1-3 Years'
+            when datediff($today, emp.hireDate) < 1825 then '3-5 Years'
+            when datediff($today, emp.hireDate) < 3650 then '5-10 Years'
+            else '10+ Years'
+        end,
+        case
+            when datediff($today, emp.hireDate) < 90 then 'Probation'
+            when datediff($today, emp.hireDate) < 365 then 'New'
+            when datediff($today, emp.hireDate) < 1825 then 'Established'
+            else 'Veteran'
+        end
+    from Employee as emp
+    inner join Department as dept on emp.departmentID = dept.ID
+    inner join Position as pos on emp.positionID = pos.ID
+    where emp.employmentStatus = #Active
+
+@Core.Description: 'Age demographics'
+define view AgeDemographics as
+    select
+        case
+            when datediff($today, emp.dateOfBirth) / 365 < 25 then 'Under 25'
+            when datediff($today, emp.dateOfBirth) / 365 < 35 then '25-34'
+            when datediff($today, emp.dateOfBirth) / 365 < 45 then '35-44'
+            when datediff($today, emp.dateOfBirth) / 365 < 55 then '45-54'
+            when datediff($today, emp.dateOfBirth) / 365 < 65 then '55-64'
+            else '65+'
+        end,
+        count(emp.ID),
+        avg(emp.currentSalary),
+        avg(datediff($today, emp.hireDate) / 365)
+    from Employee as emp
+    where emp.employmentStatus = #Active
+    group by case
+        when datediff($today, emp.dateOfBirth) / 365 < 25 then 'Under 25'
+        when datediff($today, emp.dateOfBirth) / 365 < 35 then '25-34'
+        when datediff($today, emp.dateOfBirth) / 365 < 45 then '35-44'
+        when datediff($today, emp.dateOfBirth) / 365 < 55 then '45-54'
+        when datediff($today, emp.dateOfBirth) / 365 < 65 then '55-64'
+        else '65+'
+    end
+
+// ============================================================
+// LEAVE ANALYTICS VIEWS
+// ============================================================
+
+@Core.Description: 'Leave balance summary'
+define view LeaveBalanceSummary as
+    select
+        emp.ID,
+        emp.employeeCode,
+        emp.displayName,
+        dept.name,
+        lb.leaveType,
+        lb.yr,
+        lb.openingBalance,
+        lb.accrued,
+        lb.taken,
+        lb.pendingApproval,
+        lb.availableBalance,
+        lb.lapsed,
+        case
+            when lb.availableBalance <= 0 then 'Exhausted'
+            when lb.availableBalance <= 5 then 'Low'
+            when lb.availableBalance <= 10 then 'Medium'
+            else 'Good'
+        end
+    from LeaveBalance as lb
+    inner join Employee as emp on lb.employeeID = emp.ID
+    inner join Department as dept on emp.departmentID = dept.ID
+    where lb.yr = year($today)
+
+@Core.Description: 'Leave requests pending approval'
+define view PendingLeaveRequests as
+    select
+        lr.ID,
+        lr.requestNumber,
+        emp.employeeCode,
+        emp.displayName,
+        dept.name,
+        mgr.displayName,
+        lr.leaveType,
+        lr.startDate,
+        lr.endDate,
+        lr.totalDays,
+        lr.reason,
+        lr.createdAt,
+        datediff($today, lr.createdAt),
+        lb.availableBalance,
+        case
+            when datediff($today, lr.createdAt) > 7 then 'Overdue'
+            when datediff($today, lr.createdAt) > 3 then 'Due Soon'
+            else 'On Time'
+        end
+    from LeaveRequest as lr
+    inner join Employee as emp on lr.employeeID = emp.ID
+    inner join Department as dept on emp.departmentID = dept.ID
+    left join Employee as mgr on emp.reportingManagerID = mgr.ID
+    left join LeaveBalance as lb on lb.employeeID = emp.ID and lb.leaveType = lr.leaveType and lb.yr = year($today)
+    where lr.status = #Pending
+    order by lr.createdAt asc
+
+@Core.Description: 'Leave utilization by department'
+define view LeaveUtilizationByDept as
+    select
+        dept.ID,
+        dept.name,
+        lb.leaveType,
+        count(emp.ID),
+        sum(lb.openingBalance + lb.accrued),
+        sum(lb.taken),
+        sum(lb.availableBalance),
+        round(sum(lb.taken) / nullif(sum(lb.openingBalance + lb.accrued), 0) * 100, 2)
+    from Department as dept
+    inner join Employee as emp on emp.departmentID = dept.ID and emp.employmentStatus = #Active
+    inner join LeaveBalance as lb on lb.employeeID = emp.ID and lb.yr = year($today)
+    group by dept.ID, dept.name, lb.leaveType
+
+// ============================================================
+// PERFORMANCE ANALYTICS VIEWS
+// ============================================================
+
+@Core.Description: 'Performance review summary'
+define view PerformanceReviewSummary as
+    select
+        pr.ID,
+        emp.employeeCode,
+        emp.displayName,
+        dept.name,
+        pos.title,
+        rc.name,
+        pr.overallScore,
+        pr.finalRating,
+        case pr.finalRating
+            when #Exceptional then 'Exceptional'
+            when #ExceedsExpectations then 'Exceeds Expectations'
+            when #MeetsExpectations then 'Meets Expectations'
+            when #NeedsImprovement then 'Needs Improvement'
+            when #Unsatisfactory then 'Unsatisfactory'
+            else 'Not Rated'
+        end,
+        pr.goalScore,
+        pr.competencyScore,
+        pr.recommendPromotion,
+        pr.recommendIncrement,
+        pr.recommendedIncrementPercent,
+        pr.status
+    from PerformanceReview as pr
+    inner join Employee as emp on pr.employeeID = emp.ID
+    inner join Department as dept on emp.departmentID = dept.ID
+    inner join Position as pos on emp.positionID = pos.ID
+    inner join ReviewCycle as rc on pr.cycleID = rc.ID
+
+@Core.Description: 'Performance distribution by department'
+define view PerformanceDistribution as
+    select
+        dept.ID,
+        dept.name,
+        count(pr.ID),
+        count(pr.ID where pr.finalRating = #Exceptional),
+        count(pr.ID where pr.finalRating = #ExceedsExpectations),
+        count(pr.ID where pr.finalRating = #MeetsExpectations),
+        count(pr.ID where pr.finalRating = #NeedsImprovement),
+        count(pr.ID where pr.finalRating = #Unsatisfactory),
+        avg(pr.overallScore),
+        round(count(pr.ID where pr.finalRating in (#Exceptional, #ExceedsExpectations)) * 100.0 / nullif(count(pr.ID), 0), 2)
+    from Department as dept
+    inner join Employee as emp on emp.departmentID = dept.ID
+    inner join PerformanceReview as pr on pr.employeeID = emp.ID
+    inner join ReviewCycle as rc on pr.cycleID = rc.ID and rc.isActive = true
+    where pr.status = 'Completed'
+    group by dept.ID, dept.name
+
+// ============================================================
+// ATTENDANCE VIEWS
+// ============================================================
+
+@Core.Description: 'Monthly attendance summary'
+define view MonthlyAttendance
+    with parameters (
+        p_yr: Integer,
+        p_month: Integer
+    )
+as
+    select
+        emp.ID,
+        emp.employeeCode,
+        emp.displayName,
+        dept.name,
+        count(att.ID where att.status = 'Present'),
+        count(att.ID where att.status = 'Absent'),
+        count(att.ID where att.status = 'Leave'),
+        sum(att.totalHours),
+        sum(att.overtimeHours),
+        sum(att.lateMinutes),
+        avg(att.totalHours),
+        count(att.ID where att.lateMinutes > 0),
+        round(count(att.ID where att.status = 'Present') * 100.0 / nullif(count(att.ID), 0), 2)
+    from Employee as emp
+    inner join Department as dept on emp.departmentID = dept.ID
+    left join Attendance as att on att.employeeID = emp.ID 
+        and year(att.attendanceDate) = :p_year 
+        and month(att.attendanceDate) = :p_month
+    where emp.employmentStatus = #Active
+    group by emp.ID, emp.employeeCode, emp.displayName, dept.name
+
+// ============================================================
+// HR SERVICE DEFINITIONS
+// ============================================================
+
+@Core.Description: 'Employee management service'
+service EmployeeService {
+    entity Employees as Employee;
+    entity Departments as Department;
+    entity Positions as Position;
+    entity LeaveRequests as LeaveRequest;
+    entity Attendances as Attendance;
+    
+    entity Directory as EmployeeDirectory;
+    entity Headcount as DepartmentHeadcount;
+    entity Tenure as TenureAnalysis;
+    entity Demographics as AgeDemographics;
+    
+    // Employee lifecycle
+    action hireEmployee(data: EmployeeInput) returns Employee;
+    action terminateEmployee(employeeId: UUID, reason: String, effectiveDate: Date) returns Employee;
+    action transferEmployee(employeeId: UUID, newDeptId: UUID, newPositionId: UUID, effectiveDate: Date) returns Employee;
+    action promoteEmployee(employeeId: UUID, newPositionId: UUID, newSalary: Decimal, effectiveDate: Date) returns Employee;
+    
+    // Leave management
+    action requestLeave(employeeId: UUID, leaveType: LeaveType, startDate: Date, endDate: Date, reason: String) returns LeaveRequest;
+    action approveLeave(requestId: UUID, comments: String) returns LeaveRequest;
+    action rejectLeave(requestId: UUID, reason: String) returns LeaveRequest;
+    action cancelLeave(requestId: UUID, reason: String) returns LeaveRequest;
+    
+    // Queries
+    function getEmployeeProfile(employeeId: UUID) returns Employee;
+    function getDirectReports(managerId: UUID) returns Employee;
+    function getLeaveBalance(employeeId: UUID, yr: Integer) returns LeaveBalance;
+    function getAttendanceHistory(employeeId: UUID, startDate: Date, endDate: Date) returns Attendance;
+}
+
+@Core.Description: 'Performance management service'
+service PerformanceService {
+    entity Reviews as PerformanceReview;
+    entity Goals as PerformanceGoal;
+    entity Competencies as Competency;
+    entity Trainings as EmployeeTraining;
+    entity Courses as TrainingCourse;
+    
+    entity ReviewSummary as PerformanceReviewSummary;
+    entity Distribution as PerformanceDistribution;
+    
+    // Review actions
+    action startReview(employeeId: UUID, cycleId: UUID) returns PerformanceReview;
+    action submitSelfReview(reviewId: UUID, comments: String) returns PerformanceReview;
+    action completeManagerReview(reviewId: UUID, ratings: RatingInput, comments: String) returns PerformanceReview;
+    action finalizeReview(reviewId: UUID) returns PerformanceReview;
+    
+    // Goal actions
+    action addGoal(reviewId: UUID, goal: GoalInput) returns PerformanceGoal;
+    action updateGoalProgress(goalId: UUID, progress: Integer, comments: String) returns PerformanceGoal;
+    
+    // Training actions
+    action enrollTraining(employeeId: UUID, courseId: UUID, startDate: Date) returns EmployeeTraining;
+    action completeTraining(trainingId: UUID, score: Decimal, feedback: String) returns EmployeeTraining;
+    
+    // Queries
+    function getEmployeeReviews(employeeId: UUID) returns PerformanceReview;
+    function getTeamPerformance(managerId: UUID, cycleId: UUID) returns PerformanceReviewSummary;
+    function getTrainingHistory(employeeId: UUID) returns EmployeeTraining;
+    function getOverdueTrainings() returns EmployeeTraining;
+}
+

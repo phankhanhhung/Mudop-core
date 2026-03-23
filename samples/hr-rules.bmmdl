@@ -1,0 +1,310 @@
+// ============================================================
+// BMMDL Sample: HR - Business Rules (Complex Expressions)
+// Domain: Human Resources
+// Coverage: DATEDIFF, ADD_DAYS, ADD_MONTHS, CASE, Aggregates, Conditionals
+// ============================================================
+
+namespace HR;
+
+// ============================================================
+// EMPLOYEE LIFECYCLE RULES
+// ============================================================
+
+rule EmployeeAgeCalculation for Employee on before create, before update {
+    // Calculate age from date of birth using DATEDIFF
+    compute age = datediff($today, dateOfBirth) / 365;
+    
+    // Calculate years of service
+    when hireDate is not null then {
+        compute yearsOfService = datediff($today, hireDate) / 365;
+    }
+    
+    // Generate display name
+    when displayName is null or displayName = '' then {
+        compute displayName = concat(firstName, ' ', lastName);
+    }
+}
+
+rule EmployeeHireValidation for Employee on before create {
+    // Must be at least 18 years old
+    validate datediff($today, dateOfBirth) >= 6570 // 18 * 365
+        message 'Employee must be at least 18 years old'
+        severity error;
+    
+    // Hire date cannot be in the future
+    validate hireDate <= $today
+        message 'Hire date cannot be in the future'
+        severity error;
+    
+    // Position must be active
+    validate position.isActive = true
+        message 'Cannot hire for inactive position'
+        severity error;
+    
+    // Check headcount
+    validate position.filledCount < position.headcount
+        message 'Position headcount limit reached'
+        severity error;
+    
+    // Salary within range
+    when currentSalary is not null then {
+        validate currentSalary >= position.minSalary
+            message 'Salary below minimum for this position'
+            severity warning;
+        
+        validate currentSalary <= position.maxSalary
+            message 'Salary exceeds maximum for this position'
+            severity warning;
+    }
+}
+
+rule EmployeeStatusTransition for Employee on before update {
+    // Terminated employees cannot be reactivated directly
+    when $old.employmentStatus = #Terminated and employmentStatus = #Active then {
+        validate false
+            message 'Terminated employees must be rehired as new employees'
+            severity error;
+    }
+    
+    // Set termination date when status changes to Terminated
+    when employmentStatus = #Terminated and $old.employmentStatus != #Terminated then {
+        compute terminationDate = $today;
+    }
+    
+    // Clear termination date if reactivated (from Suspended)
+    when $old.employmentStatus = #Suspended and employmentStatus = #Active then {
+        compute terminationDate = null;
+        compute terminationReason = null;
+    }
+}
+
+rule PositionCountUpdate for Employee on after create, after update, after delete {
+    // Update filled count on position
+    compute position.filledCount = count(employees where position.ID = $self.position.ID and employmentStatus = #Active);
+}
+
+// ============================================================
+// LEAVE MANAGEMENT RULES
+// ============================================================
+
+rule LeaveRequestValidation for LeaveRequest on before create, before update {
+    // Start date must be today or future
+    validate startDate >= $today
+        message 'Leave start date must be today or in the future'
+        severity error;
+    
+    // End date must be after start date
+    validate endDate >= startDate
+        message 'End date must be on or after start date'
+        severity error;
+    
+    // Calculate total days
+    compute totalDays = datediff(endDate, startDate) + 1;
+    
+    // Adjust for half day
+    when isHalfDay = true then {
+        compute totalDays = 0.5;
+    }
+    
+    // Check advance notice based on leave type
+    when leaveType = #Annual then {
+        validate datediff(startDate, $today) >= 7
+            message 'Annual leave requires 7 days advance notice'
+            severity warning;
+    }
+    
+    // Maternity leave validation
+    when leaveType = #Maternity then {
+        validate totalDays >= 60
+            message 'Maternity leave must be at least 60 days'
+            severity error;
+        
+        validate employee.gender = #Female
+            message 'Maternity leave is only for female employees'
+            severity error;
+    }
+    
+    // Paternity leave validation
+    when leaveType = #Paternity then {
+        validate totalDays <= 14
+            message 'Paternity leave cannot exceed 14 days'
+            severity error;
+        
+        validate employee.gender = #Male
+            message 'Paternity leave is only for male employees'
+            severity error;
+    }
+}
+
+rule LeaveBalanceCheck for LeaveRequest on before create {
+    // Get available balance
+    when status = #Pending then {
+        // Check if sufficient balance
+        validate employee.leaveBalances.availableBalance >= totalDays
+            message 'Insufficient leave balance'
+            severity error;
+        
+        // Update pending amount
+        compute employee.leaveBalances.pendingApproval = employee.leaveBalances.pendingApproval + totalDays;
+    }
+}
+
+rule LeaveApprovalProcess for LeaveRequest on before update {
+    // When approved, deduct from balance
+    when status = #Approved and $old.status = #Pending then {
+        compute approvedAt = $now;
+        compute employee.leaveBalances.pendingApproval = employee.leaveBalances.pendingApproval - totalDays;
+    }
+    
+    // When rejected, release pending
+    when status = #Rejected and $old.status = #Pending then {
+        compute employee.leaveBalances.pendingApproval = employee.leaveBalances.pendingApproval - totalDays;
+    }
+    
+    // When taken (completed), update taken count
+    when status = #Taken and $old.status = #Approved then {
+        compute employee.leaveBalances.taken = employee.leaveBalances.taken + totalDays;
+        compute employee.leaveBalances.availableBalance = employee.leaveBalances.openingBalance 
+            + employee.leaveBalances.accrued 
+            + employee.leaveBalances.carryForward 
+            + employee.leaveBalances.adjustment 
+            - employee.leaveBalances.taken;
+    }
+}
+
+rule LeaveBalanceRecalculation for LeaveBalance on before update {
+    // Recalculate available balance
+    compute availableBalance = openingBalance + accrued + carryForward + adjustment - taken - lapsed;
+    
+    // Cannot go negative unless policy allows
+    when availableBalance < 0 and policy.allowNegativeBalance = false then {
+        validate false
+            message 'Leave balance cannot be negative'
+            severity error;
+    }
+}
+
+// ============================================================
+// ATTENDANCE RULES
+// ============================================================
+
+rule AttendanceCalculation for Attendance on before create, before update {
+    // Calculate total hours
+    when checkInTime is not null and checkOutTime is not null then {
+        compute totalHours = datediff(checkOutTime, checkInTime) / 60; // in hours
+    }
+    
+    // Calculate overtime (over 8 hours)
+    when totalHours > 8 then {
+        compute overtimeHours = totalHours - 8;
+    }
+    
+    // Calculate late minutes (assuming 9 AM start)
+    when hour(checkInTime) >= 9 then {
+        compute lateMinutes = (hour(checkInTime) - 9) * 60 + minute(checkInTime);
+    }
+}
+
+rule AttendanceValidation for Attendance on before create {
+    // Cannot create future attendance
+    validate attendanceDate <= $today
+        message 'Cannot mark attendance for future dates'
+        severity error;
+    
+    // Check for duplicate
+    validate count(attendances where attendanceDate = $self.attendanceDate and employee.ID = $self.employee.ID) = 0
+        message 'Attendance already exists for this date'
+        severity error;
+}
+
+// ============================================================
+// PERFORMANCE REVIEW RULES
+// ============================================================
+
+rule PerformanceReviewScoreCalculation for PerformanceReview on before update {
+    // Calculate goal score (weighted average)
+    compute goalScore = avg(goals.score);
+    
+    // Calculate competency score
+    compute competencyScore = avg(competencyRatings.finalRating);
+    
+    // Calculate overall score (60% goals, 40% competencies)
+    compute overallScore = (goalScore * 0.6) + (competencyScore * 0.4);
+    
+    // Determine final rating based on overall score
+    compute finalRating = case
+        when overallScore >= 4.5 then #Exceptional
+        when overallScore >= 3.5 then #ExceedsExpectations
+        when overallScore >= 2.5 then #MeetsExpectations
+        when overallScore >= 1.5 then #NeedsImprovement
+        else #Unsatisfactory
+    end;
+}
+
+rule PerformanceGoalScoreCalculation for PerformanceGoal on before update {
+    // Calculate score based on achievement and weight
+    compute score = (achievementPercent / 100) * weightPercent;
+    
+    // Mark completed if 100% achieved
+    when achievementPercent >= 100 and status != #Completed then {
+        compute status = 'Completed';
+        compute completedDate = $today;
+    }
+}
+
+rule PerformanceReviewStatusTransition for PerformanceReview on before update {
+    // Submit for manager review
+    when status = 'ManagerReview' and $old.status = 'SelfReview' then {
+        compute submittedAt = $now;
+        
+        // Validate all goals have self-comments
+        validate count(goals where selfComment is null) = 0
+            message 'All goals must have self-assessment comments'
+            severity error;
+    }
+    
+    // Manager completes review
+    when status = 'Calibration' and $old.status = 'ManagerReview' then {
+        compute managerReviewedAt = $now;
+        
+        // Validate all goals have manager comments
+        validate count(goals where managerComment is null) = 0
+            message 'All goals must have manager comments'
+            severity error;
+    }
+    
+    // HR approves
+    when status = 'Completed' and $old.status = 'Calibration' then {
+        compute hrApprovedAt = $now;
+    }
+}
+
+// ============================================================
+// TRAINING RULES
+// ============================================================
+
+rule TrainingCompletionCheck for EmployeeTraining on before update {
+    // Check passing score
+    when status = #Completed and score is not null then {
+        compute isPassed = score >= passingScore;
+        
+        when isPassed = false then {
+            compute status = #Failed;
+        }
+    }
+    
+    // Calculate expiry date (1 year from completion for certifications)
+    when status = #Completed and completionDate is not null and expiryDate is null then {
+        compute expiryDate = add_years(completionDate, 1);
+    }
+}
+
+rule TrainingPrerequisiteCheck for EmployeeTraining on before create {
+    // Check if prerequisites are met
+    when course.prerequisites is not null then {
+        // Simple check - validate employee has completed prerequisite courses
+        validate count(employee.trainings where status = #Completed and course.code in (course.prerequisites)) > 0
+            message 'Prerequisites not completed'
+            severity error;
+    }
+}

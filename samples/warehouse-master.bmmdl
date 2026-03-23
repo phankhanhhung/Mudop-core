@@ -1,0 +1,637 @@
+// ============================================================
+// BMMDL Sample: Warehouse - Master Data
+// Advanced features: computed fields, indexes, constraints, events
+// ============================================================
+
+namespace Warehouse;
+
+using Common;
+
+// ============================================================
+// DOMAIN EVENTS
+// ============================================================
+
+event WarehouseCreated {
+    warehouseId: UUID;
+    warehouseCode: String(20);
+    plantId: UUID;
+    createdAt: DateTime;
+}
+
+event WarehouseActivated {
+    warehouseId: UUID;
+    warehouseCode: String(20);
+    activatedBy: UUID;
+    activatedAt: DateTime;
+}
+
+event WarehouseDeactivated {
+    warehouseId: UUID;
+    warehouseCode: String(20);
+    deactivatedBy: UUID;
+    reason: String(500);
+    deactivatedAt: DateTime;
+}
+
+event ZoneCapacityExceeded {
+    zoneId: UUID;
+    warehouseId: UUID;
+    currentUsage: Decimal(18, 2);
+    maxCapacity: Decimal(18, 2);
+    usagePercent: Decimal(5, 2);
+    eventTimestamp: DateTime;
+}
+
+event BinLocationAssigned {
+    binId: UUID;
+    zoneId: UUID;
+    itemId: UUID;
+    quantity: Decimal(18, 3);
+    assignedAt: DateTime;
+}
+
+// ============================================================
+// WAREHOUSE
+// ============================================================
+
+@Core.Description: 'Warehouse Master Data'
+@Tenant.Aware: true
+@Company.Aware: true
+entity WarehouseMaster : Auditable {
+    key ID: UUID;
+    
+    @Core.Computed
+    @Core.Immutable
+    @Sequence.Pattern: 'WH-{company}-{seq:4}'
+    @Sequence.Scope: #Company
+    warehouseCode: String(20);
+    
+    @Core.Mandatory: true
+    warehouseName: String(200);
+    
+    warehouseType: WarehouseType;
+    
+    // Location
+    plant: association [1] to Plant;
+    
+    @Core.Label: 'Street Address'
+    addressLine1: String(200);
+    addressLine2: String(200);
+    city: String(100);
+    state: String(100);
+    postalCode: String(20);
+    country: String(3) default 'VN';
+    
+    // Coordinates for logistics optimization
+    latitude: Decimal(10, 7);
+    longitude: Decimal(10, 7);
+    
+    // Capacity
+    @Core.Label: 'Total Area (m²)'
+    totalAreaSqm: Decimal(12, 2);
+    
+    @Core.Label: 'Usable Area (m²)'
+    usableAreaSqm: Decimal(12, 2);
+    
+    @Core.Label: 'Max Pallet Positions'
+    maxPalletPositions: Integer default 0;
+    
+    @Core.Label: 'Current Pallet Count'
+    currentPalletCount: Integer default 0;
+    
+    // Computed capacity metrics
+    virtual usagePercent: Decimal(5, 2) computed = 
+        case when maxPalletPositions > 0 
+             then round((currentPalletCount * 100.0) / maxPalletPositions, 2) 
+             else 0 
+        end;
+    
+    virtual availablePalletPositions: Integer computed = maxPalletPositions - currentPalletCount;
+    
+    virtual isNearCapacity: Boolean computed = usagePercent >= 85;
+    virtual isOverCapacity: Boolean computed = currentPalletCount > maxPalletPositions;
+    
+    // Operating hours
+    operatingHoursStart: Time;
+    operatingHoursEnd: Time;
+    operatingDays: String(20) default 'Mon-Sat';
+    
+    // Temperature control
+    @Core.Label: 'Temperature Controlled'
+    isTemperatureControlled: Boolean default false;
+    
+    minTemperature: Decimal(5, 2);
+    maxTemperature: Decimal(5, 2);
+    
+    // Status
+    status: WarehouseStatus default #Active;
+    
+    @Core.Label: 'Is Receiving Active'
+    isReceivingActive: Boolean default true;
+    
+    @Core.Label: 'Is Shipping Active'
+    isShippingActive: Boolean default true;
+    
+    // Zones
+    zones: composition [*] of WarehouseZoneMaster;
+    
+    // Contact
+    contactPerson: String(100);
+    contactPhone: String(30);
+    contactEmail: String(100);
+    
+    remarks: String(2000);
+    
+    // ========================================
+    // INDEXES
+    // ========================================
+    
+    unique index idx_warehouse_code on (warehouseCode);
+    index idx_warehouse_plant on (plant);
+    index idx_warehouse_status on (status);
+    index idx_warehouse_type_status on (warehouseType, status);
+    index idx_warehouse_country_city on (country, city);
+    
+    // ========================================
+    // CONSTRAINTS
+    // ========================================
+    
+    constraint chk_status check (status in (#Active, #Inactive, #UnderMaintenance, #Closed));
+    constraint chk_capacity check (maxPalletPositions >= 0);
+    constraint chk_area check (usableAreaSqm <= totalAreaSqm);
+    constraint chk_temperature check (maxTemperature > minTemperature or isTemperatureControlled = false);
+    constraint fk_plant foreign key (plant) references Plant (ID);
+    
+    // ========================================
+    // ENHANCED ACTIONS
+    // ========================================
+    
+    action activate()
+        requires status = #Inactive
+        ensures status = #Active
+        emits WarehouseActivated;
+    
+    action deactivate(reason: String)
+        requires status = #Active
+        requires currentPalletCount = 0
+        ensures status = #Inactive
+        modifies remarks = reason
+        emits WarehouseDeactivated;
+    
+    action putUnderMaintenance(reason: String)
+        requires status = #Active
+        ensures status = #UnderMaintenance
+        modifies isReceivingActive = false
+        modifies isShippingActive = false
+        modifies remarks = reason;
+    
+    action resumeOperations()
+        requires status = #UnderMaintenance
+        ensures status = #Active
+        modifies isReceivingActive = true
+        modifies isShippingActive = true;
+}
+
+enum WarehouseType {
+    @Core.Label: 'Raw Materials'
+    RawMaterial;
+    @Core.Label: 'Finished Goods'
+    FinishedGoods;
+    @Core.Label: 'Work In Progress'
+    WIP;
+    @Core.Label: 'Cold Storage'
+    ColdStorage;
+    @Core.Label: 'Hazardous Materials'
+    Hazmat;
+    @Core.Label: 'Distribution Center'
+    DistributionCenter;
+    @Core.Label: 'Cross-Docking'
+    CrossDocking;
+    @Core.Label: 'Bonded Warehouse'
+    Bonded;
+    @Core.Label: 'Quality Hold'
+    QualityHold;
+    @Core.Label: 'Mixed Use'
+    Mixed;
+}
+
+enum WarehouseStatus {
+    Active;
+    Inactive;
+    UnderMaintenance;
+    Closed;
+}
+
+// ============================================================
+// WAREHOUSE ZONE
+// ============================================================
+
+@Core.Description: 'Warehouse Zone Configuration'
+entity WarehouseZoneMaster : Auditable {
+    key ID: UUID;
+    
+    @Sequence.Pattern: 'ZN-{seq:3}'
+    zoneCode: String(20);
+    
+    zoneName: String(100);
+    zoneType: ZoneType;
+    
+    // Storage configuration
+    @Core.Label: 'Zone Area (m²)'
+    areaSqm: Decimal(10, 2);
+    
+    @Core.Label: 'Max Pallet Positions'
+    maxPalletPositions: Integer default 0;
+    
+    @Core.Label: 'Current Pallet Count'
+    currentPalletCount: Integer default 0;
+    
+    // Computed metrics
+    virtual usagePercent: Decimal(5, 2) computed = 
+        case when maxPalletPositions > 0 
+             then round((currentPalletCount * 100.0) / maxPalletPositions, 2) 
+             else 0 
+        end;
+    
+    virtual availablePositions: Integer computed = maxPalletPositions - currentPalletCount;
+    virtual isNearCapacity: Boolean computed = usagePercent >= 90;
+    
+    // Physical properties
+    @Core.Label: 'Aisle Width (m)'
+    aisleWidth: Decimal(4, 2);
+    
+    @Core.Label: 'Max Stack Height'
+    maxStackHeight: Integer default 1;
+    
+    @Core.Label: 'Rack Levels'
+    rackLevels: Integer default 1;
+    
+    // Temperature zone
+    @Core.Label: 'Temperature Controlled'
+    isTemperatureControlled: Boolean default false;
+    
+    minTemperature: Decimal(5, 2);
+    maxTemperature: Decimal(5, 2);
+    
+    // Humidity control
+    @Core.Label: 'Humidity Controlled'
+    isHumidityControlled: Boolean default false;
+    
+    minHumidity: Decimal(5, 2);
+    maxHumidity: Decimal(5, 2);
+    
+    // Special properties
+    @Core.Label: 'Is Hazmat Zone'
+    isHazmatZone: Boolean default false;
+    
+    @Core.Label: 'Is Clean Room'
+    isCleanRoom: Boolean default false;
+    
+    @Core.Label: 'Is Quarantine Zone'
+    isQuarantineZone: Boolean default false;
+    
+    @Core.Label: 'FIFO Enforced'
+    isFifoEnforced: Boolean default true;
+    
+    // Allowed item types
+    allowedItemCategories: String(500);
+    restrictedItemCategories: String(500);
+    
+    status: ZoneStatus default #Active;
+    
+    // Bin locations
+    binLocations: composition [*] of BinLocationMaster;
+    
+    // ========================================
+    // INDEXES & CONSTRAINTS
+    // ========================================
+    
+    unique index idx_zone_code on (zoneCode);
+    index idx_zone_type on (zoneType);
+    index idx_zone_status on (status);
+    
+    constraint chk_zone_status check (status in (#Active, #Inactive, #Full, #Maintenance));
+    constraint chk_zone_capacity check (maxPalletPositions >= 0);
+    constraint chk_zone_temperature check (maxTemperature > minTemperature or isTemperatureControlled = false);
+    constraint chk_zone_humidity check (maxHumidity > minHumidity or isHumidityControlled = false);
+    
+    // ========================================
+    // ACTIONS
+    // ========================================
+    
+    action markAsFull()
+        requires usagePercent >= 95
+        ensures status = #Full
+        emits ZoneCapacityExceeded;
+    
+    action resumeReceiving()
+        requires status = #Full
+        requires usagePercent < 90
+        ensures status = #Active;
+}
+
+enum ZoneType {
+    Receiving;
+    Shipping;
+    Picking;
+    BulkStorage;
+    RackStorage;
+    FloorStorage;
+    Staging;
+    Packing;
+    Quarantine;
+    Returns;
+    ValueAdded;
+    CrossDock;
+}
+
+enum ZoneStatus {
+    Active;
+    Inactive;
+    Full;
+    Maintenance;
+}
+
+// ============================================================
+// BIN LOCATION
+// ============================================================
+
+@Core.Description: 'Bin Location / Storage Slot'
+entity BinLocationMaster : Auditable {
+    key ID: UUID;
+    
+    @Core.Mandatory: true
+    binCode: String(30);
+    
+    // Location coordinates
+    aisle: String(10);
+    rack: String(10);
+    level: String(10);
+    position: String(10);
+    
+    // Dimensions
+    @Core.Label: 'Length (cm)'
+    lengthCm: Decimal(8, 2);
+    
+    @Core.Label: 'Width (cm)'
+    width: Decimal(8, 2);
+    
+    @Core.Label: 'Height (cm)'
+    height: Decimal(8, 2);
+    
+    // Computed volume
+    virtual volumeCubicCm: Decimal(15, 2) computed = lengthCm * width * height;
+    virtual volumeCubicM: Decimal(12, 6) computed = volumeCubicCm / 1000000;
+    
+    @Core.Label: 'Max Weight (kg)'
+    maxWeightKg: Decimal(10, 2);
+    
+    // Current state
+    @Core.Label: 'Current Weight (kg)'
+    currentWeightKg: Decimal(10, 2) default 0;
+    
+    @Core.Label: 'Is Occupied'
+    isOccupied: Boolean default false;
+    
+    @Core.Label: 'Current Item Count'
+    currentItemCount: Integer default 0;
+    
+    // Computed utilization
+    virtual weightUtilization: Decimal(5, 2) computed = 
+        case when maxWeightKg > 0 
+             then round((currentWeightKg * 100.0) / maxWeightKg, 2) 
+             else 0 
+        end;
+    
+    virtual isOverweight: Boolean computed = currentWeightKg > maxWeightKg;
+    
+    // Bin type and restrictions
+    binType: BinType default #Standard;
+    
+    @Core.Label: 'Pick Face'
+    isPickFace: Boolean default false;
+    
+    @Core.Label: 'Putaway Allowed'
+    isPutawayAllowed: Boolean default true;
+    
+    @Core.Label: 'Mixed Items Allowed'
+    isMixedItemsAllowed: Boolean default false;
+    
+    @Core.Label: 'Fixed Item Assignment'
+    fixedItemId: UUID;
+    
+    fixedItem: association [0,1] to Item on Item.ID = fixedItemId;
+    
+    // ABC classification for picking optimization
+    abcClassification: ABCClassification default #C;
+    
+    @Core.Label: 'Pick Sequence'
+    pickSequence: Integer default 999;
+    
+    status: BinStatus default #Available;
+    
+    // ========================================
+    // INDEXES & CONSTRAINTS
+    // ========================================
+    
+    unique index idx_bin_code on (binCode);
+    index idx_bin_aisle_rack on (aisle, rack, level);
+    index idx_bin_status on (status);
+    index idx_bin_type on (binType);
+    index idx_bin_abc on (abcClassification);
+    index idx_bin_pick_sequence on (pickSequence);
+    
+    constraint chk_bin_status check (status in (#Available, #Occupied, #Reserved, #Blocked, #Damaged));
+    constraint chk_bin_dimensions check (lengthCm > 0 and width > 0 and height > 0);
+    constraint chk_bin_weight check (maxWeightKg > 0);
+    
+    // ========================================
+    // ACTIONS
+    // ========================================
+    
+    action reserve()
+        requires status = #Available
+        ensures status = #Reserved;
+    
+    action release()
+        requires status = #Reserved
+        ensures status = #Available;
+    
+    action block(reason: String)
+        requires status != #Damaged
+        ensures status = #Blocked;
+    
+    action assignItem(itemId: UUID, qty: Decimal)
+        requires status = #Available or status = #Reserved
+        requires isMixedItemsAllowed = true or currentItemCount = 0
+        ensures isOccupied = true
+        emits BinLocationAssigned;
+}
+
+enum BinType {
+    Standard;
+    Pallet;
+    Shelf;
+    Drawer;
+    Bin;
+    Floor;
+    Bulk;
+    PickSlot;
+    Reserve;
+    Staging;
+}
+
+enum BinStatus {
+    Available;
+    Occupied;
+    Reserved;
+    Blocked;
+    Damaged;
+}
+
+enum ABCClassification {
+    A;
+    B;
+    C;
+}
+
+// ============================================================
+// WAREHOUSE SERVICE
+// ============================================================
+
+@Core.Description: 'Warehouse Master Data Service'
+service WarehouseMasterService {
+    
+    // Warehouse operations
+    action createWarehouse(
+        code: String,
+        name: String,
+        plantId: UUID,
+        warehouseType: WarehouseType
+    ) returns WarehouseMaster
+        requires code is not null
+        requires name is not null
+        requires plantId is not null
+        emits WarehouseCreated;
+    
+    action cloneWarehouse(sourceId: UUID, newCode: String, newName: String) returns WarehouseMaster;
+    
+    // Zone operations
+    action addZone(warehouseId: UUID, zoneCode: String, zoneType: ZoneType) returns WarehouseZoneMaster;
+    
+    action generateBinLocations(
+        zoneId: UUID,
+        aisleCount: Integer,
+        racksPerAisle: Integer,
+        levelsPerRack: Integer,
+        positionsPerLevel: Integer
+    ) returns Integer;
+    
+    // Capacity queries
+    function getWarehouseCapacity(warehouseId: UUID) returns CapacityInfo;
+    function getZoneCapacity(zoneId: UUID) returns CapacityInfo;
+    function findAvailableBins(zoneId: UUID, minVolume: Decimal, minWeight: Decimal) returns BinLocationMaster;
+    
+    // Analytics
+    function getCapacityUtilizationReport(warehouseId: UUID) returns CapacityReport;
+    function getZoneHeatmap(warehouseId: UUID) returns ZoneHeatmapData;
+}
+
+// ============================================================
+// VALUE OBJECTS FOR SERVICE RESPONSES
+// ============================================================
+
+type CapacityInfo : {
+    totalPositions: Integer;
+    usedPositions: Integer;
+    availablePositions: Integer;
+    usagePercent: Decimal(5, 2);
+    isNearCapacity: Boolean
+}
+
+type CapacityReport : {
+    warehouseId: UUID;
+    warehouseCode: String(20);
+    reportDate: DateTime;
+    zones: array<ZoneCapacityDetail>;
+    totalCapacity: CapacityInfo
+}
+
+type ZoneCapacityDetail : {
+    zoneId: UUID;
+    zoneCode: String(20);
+    zoneName: String(100);
+    capacity: CapacityInfo;
+    topItems: array<ItemCapacityUsage>
+}
+
+type ItemCapacityUsage : {
+    itemId: UUID;
+    itemCode: String(50);
+    positionsUsed: Integer;
+    percentOfZone: Decimal(5, 2)
+}
+
+type ZoneHeatmapData : {
+    warehouseId: UUID;
+    zones: array<ZoneActivityMetric>;
+    generatedAt: DateTime
+}
+
+type ZoneActivityMetric : {
+    zoneId: UUID;
+    zoneCode: String(20);
+    putawayCount: Integer;
+    pickCount: Integer;
+    activityScore: Decimal(5, 2)
+}
+
+// ============================================================
+// PROJECTION VIEWS
+// ============================================================
+
+define view ActiveWarehousesView as
+    select
+        w.ID,
+        w.warehouseCode,
+        w.warehouseName,
+        w.warehouseType,
+        w.plant,
+        w.city,
+        w.country,
+        w.usagePercent,
+        w.availablePalletPositions,
+        w.isNearCapacity,
+        w.isReceivingActive,
+        w.isShippingActive
+    from WarehouseMaster as w
+    where w.status = #Active
+
+define view WarehouseCapacityOverview as
+    select
+        w.warehouseCode,
+        w.warehouseName,
+        w.maxPalletPositions as totalCapacity,
+        w.currentPalletCount as usedCapacity,
+        w.usagePercent,
+        count(z.ID) as zoneCount,
+        sum(z.maxPalletPositions) as zoneTotalCapacity,
+        sum(z.currentPalletCount) as zoneUsedCapacity
+    from WarehouseMaster as w
+    left join WarehouseZoneMaster as z on z.ID = w.ID
+    where w.status = #Active
+    group by w.warehouseCode, w.warehouseName, w.maxPalletPositions, w.currentPalletCount, w.usagePercent
+
+define view CriticalCapacityZones as
+    select
+        z.ID,
+        z.zoneCode,
+        z.zoneName,
+        z.zoneType,
+        z.maxPalletPositions,
+        z.currentPalletCount,
+        z.usagePercent,
+        z.isNearCapacity,
+        z.status
+    from WarehouseZoneMaster as z
+    where z.usagePercent >= 85 and z.status = #Active

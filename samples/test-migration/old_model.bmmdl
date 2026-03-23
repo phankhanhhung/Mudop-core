@@ -1,0 +1,55 @@
+// ============================================================
+// BMMDL Sample: Model v1.0 (Old Version)
+// For migration diff testing
+// ============================================================
+
+namespace TestMigration;
+
+type Money : Decimal(18, 2);
+type Code : String(50);
+
+enum CustomerStatus {
+    Active;
+    Inactive;
+}
+
+entity Customer {
+    key ID: UUID;
+    
+    customerCode: Code;
+    name: String(100);        // Will be renamed to fullName
+    email: String(255);
+    phone: String(20);        // Will be removed
+    status: CustomerStatus default #Active;
+    creditLimit: Money default 0;
+    
+    index idx_customer_code on (customerCode);
+}
+
+entity Order {
+    key ID: UUID;
+    
+    orderNumber: Code;
+    orderDate: Date default $today;
+    customerId: UUID;
+    
+    customer: association [1] to Customer;
+    
+    subtotal: Money default 0;
+    totalAmount: Money default 0;
+    
+    status: String(20) default 'Draft';   // Type will change
+    
+    items: composition [*] of OrderItem;
+    
+    unique index idx_order_number on (orderNumber);
+}
+
+entity OrderItem {
+    key ID: UUID;
+    
+    orderId: UUID;
+    productName: String(200);
+    quantity: Integer default 1;
+    unitPrice: Money;
+}

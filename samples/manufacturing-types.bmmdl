@@ -1,0 +1,109 @@
+// ============================================================
+// BMMDL Sample: Manufacturing & Supply Chain - Core Types
+// ============================================================
+
+namespace Manufacturing;
+
+// Common types for manufacturing
+type Quantity : Decimal(15, 4);
+type UnitCost : Decimal(15, 4);
+type Weight : Decimal(12, 3);
+type Dimension : Decimal(10, 2);
+type LeadTimeDays : Integer;
+type BatchNumber : String(50);
+type SerialNumber : String(100);
+type Location : String(50);
+
+// Unit of Measure
+enum UnitOfMeasure {
+    @Core.Label: 'Each'
+    EA;
+    @Core.Label: 'Kilogram'
+    KG;
+    @Core.Label: 'Gram'
+    G;
+    @Core.Label: 'Liter'
+    L;
+    @Core.Label: 'Milliliter'
+    ML;
+    @Core.Label: 'Meter'
+    M;
+    @Core.Label: 'Centimeter'
+    CM;
+    @Core.Label: 'Box'
+    BOX;
+    @Core.Label: 'Pallet'
+    PLT;
+    @Core.Label: 'Carton'
+    CTN;
+}
+
+// Item types
+enum ItemType {
+    @Core.Label: 'Raw Material'
+    RawMaterial;
+    @Core.Label: 'Work In Progress'
+    WIP;
+    @Core.Label: 'Finished Good'
+    FinishedGood;
+    @Core.Label: 'Semi-Finished'
+    SemiFinished;
+    @Core.Label: 'Packaging'
+    Packaging;
+    @Core.Label: 'Consumable'
+    Consumable;
+    @Core.Label: 'Spare Part'
+    SparePart;
+}
+
+// Order/Document Status
+enum DocumentStatus {
+    Draft;
+    Submitted;
+    Approved;
+    InProgress;
+    Completed;
+    Cancelled;
+    OnHold;
+}
+
+// Quality Status
+enum QualityStatus {
+    Pending;
+    Passed;
+    Failed;
+    Quarantine;
+    Released;
+}
+
+// Aspect for items with tracking
+aspect Trackable {
+    @Core.Label: 'Lot/Batch Tracking'
+    isBatchTracked: Boolean default false;
+    
+    @Core.Label: 'Serial Number Tracking'
+    isSerialTracked: Boolean default false;
+    
+    @Core.Label: 'Expiry Date Tracking'
+    isExpiryTracked: Boolean default false;
+}
+
+// Aspect for warehouse location
+aspect Locatable {
+    warehouseCode: Location;
+    zoneCode: Location;
+    aisle: String(10);
+    rack: String(10);
+    shelf: String(10);
+    bin: String(10);
+}
+
+// Aspect for dimensions
+aspect Dimensional {
+    itemLength: Dimension;
+    width: Dimension;
+    height: Dimension;
+    grossWeight: Weight;
+    netWeight: Weight;
+    volumeUOM: String(10) default 'CBM';
+}

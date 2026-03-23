@@ -1,0 +1,95 @@
+﻿// ============================================================
+// BMMDL Sample: Simple Module Test
+// Tests the new
+
+module SimpleECommerce version '1.0.0' {
+    author: 'DevTeam';
+    description: 'Simple E-Commerce module for testing';
+    publishes SimpleECommerce;
+
+    namespace SimpleECommerce {
+        type Money : Decimal(18, 2);
+        type Email : String(255);
+
+        @Core.Description: 'Customer master data'
+        entity Customer {
+            key ID: UUID;
+
+            code: String(50);
+            name: String(200);
+            email: Email;
+
+            status: CustomerStatus default #Active;
+            creditLimit: Money default 0;
+
+            unique index idx_customer_code on (code);
+        }
+
+        enum CustomerStatus {
+            Active;
+            Inactive;
+            Suspended;
+        }
+
+        @Core.Description: 'Product catalog'
+        entity Product {
+            key ID: UUID;
+
+            productCode: String(50);
+            name: String(200);
+            unitPrice: Money;
+            isActive: Boolean default true;
+
+            unique index idx_product_code on (productCode);
+        }
+
+        @Core.Description: 'Sales order'
+        entity Order {
+            key ID: UUID;
+
+            orderNumber: String(50);
+            orderDate: Date default $today;
+
+            customer: association [1] to Customer;
+            customerID: UUID;
+
+            subtotal: Money default 0;
+            taxAmount: Money default 0;
+            totalAmount: Money default 0;
+
+            status: OrderStatus default #Draft;
+
+            items: composition [*] of OrderItem;
+
+            unique index idx_order_number on (orderNumber);
+        }
+
+        entity OrderItem {
+            key ID: UUID;
+
+            product: association [1] to Product;
+            productID: UUID;
+
+            quantity: Integer default 1;
+            unitPrice: Money;
+            lineTotal: Money default 0;
+        }
+
+        enum OrderStatus {
+            Draft;
+            Confirmed;
+            Shipped;
+            Delivered;
+            Cancelled;
+        }
+
+        // Service definition
+        service OrderService {
+            function getOrder(orderId: UUID) returns Order;
+            function getCustomerOrders(customerId: UUID) returns Order;
+            action createOrder(customerId: UUID) returns Order;
+            action confirmOrder(orderId: UUID);
+        }
+
+    }
+}

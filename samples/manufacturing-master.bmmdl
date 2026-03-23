@@ -1,0 +1,422 @@
+// ============================================================
+// BMMDL Sample: Manufacturing - Master Data
+// ============================================================
+
+namespace Manufacturing;
+
+using Common;
+using Manufacturing;
+
+// ============================================================
+// ITEM / PRODUCT MASTER
+// ============================================================
+
+@Core.Description: 'Item/Material Master'
+@Tenant.Aware: true
+@Company.Aware: true
+entity Item : Auditable, Trackable, Dimensional {
+    key ID: UUID;
+    
+    @Core.Label: 'Item Code'
+    @Sequence.Name: 'ItemCodeSeq'
+    @Sequence.Pattern: '{prefix}-{category}-{seq:6}'
+    itemCode: String(50);
+    
+    @Core.Mandatory: true
+    name: String(200);
+    
+    description: String(2000);
+    
+    itemType: ItemType;
+    
+    @Core.Label: 'Base UOM'
+    baseUOM: UnitOfMeasure;
+    
+    // Categorization
+    category: association [0,1] to ItemCategory;
+    subCategory: association [0,1] to ItemCategory;
+    
+    // Costing
+    standardCost: UnitCost default 0;
+    lastPurchasePrice: UnitCost;
+    averageCost: UnitCost;
+    
+    // Planning
+    @Core.Label: 'Safety Stock'
+    safetyStock: Quantity default 0;
+    
+    @Core.Label: 'Reorder Point'
+    reorderPoint: Quantity default 0;
+    
+    @Core.Label: 'Reorder Quantity'
+    reorderQty: Quantity default 0;
+    
+    @Core.Label: 'Lead Time (Days)'
+    leadTimeDays: LeadTimeDays default 0;
+    
+    @Core.Label: 'Minimum Order Qty'
+    minOrderQty: Quantity default 1;
+    
+    // Shelf life
+    shelfLifeDays: Integer;
+    
+    // Status
+    isActive: Boolean default true;
+    isPhantom: Boolean default false;
+    
+    // BOM
+    billOfMaterials: composition [*] of BOMLine;
+    
+    // Alternative UOMs
+    unitConversions: composition [*] of ItemUOMConversion;
+    
+    // Preferred vendors
+    vendors: composition [*] of ItemVendor;
+}
+
+entity ItemCategory {
+    key ID: UUID;
+    
+    @Sequence.Pattern: 'CAT-{seq:4}'
+    code: String(20);
+    name: String(100);
+    description: String(500);
+    
+    parentCategory: association [0,1] to ItemCategory;
+    
+    isActive: Boolean default true;
+}
+
+entity ItemUOMConversion {
+    key ID: UUID;
+    
+    fromUOM: UnitOfMeasure;
+    toUOM: UnitOfMeasure;
+    conversionFactor: Decimal(15, 6);
+}
+
+entity ItemVendor {
+    key ID: UUID;
+    
+    vendor: association [1] to Vendor;
+    vendorItemCode: String(50);
+    vendorItemName: String(200);
+    unitPrice: UnitCost;
+    leadTimeDays: LeadTimeDays;
+    minOrderQty: Quantity;
+    isPreferred: Boolean default false;
+}
+
+// ============================================================
+// BILL OF MATERIALS (BOM)
+// ============================================================
+
+@Core.Description: 'Bill of Materials Header'
+entity BOM : Auditable {
+    key ID: UUID;
+    
+    @Core.Label: 'BOM Number'
+    @Sequence.Pattern: 'BOM-{seq:6}'
+    bomNumber: String(50);
+    
+    @Core.Label: 'Parent Item'
+    parentItem: association [1] to Item;
+    
+    @Core.Label: 'BOM Version'
+    version: String(10) default '1.0';
+    
+    description: String(500);
+    
+    @Core.Label: 'Base Quantity'
+    baseQuantity: Quantity default 1;
+    
+    @Core.Label: 'Effective From'
+    effectiveFrom: Date;
+    
+    @Core.Label: 'Effective To'
+    effectiveTo: Date;
+    
+    isActive: Boolean default true;
+    
+    // BOM Lines
+    lines: composition [*] of BOMLine;
+}
+
+entity BOMLine {
+    key ID: UUID;
+    
+    @Core.Label: 'Line Number'
+    lineNumber: Integer;
+    
+    @Core.Label: 'Component Item'
+    componentItem: association [1] to Item;
+    
+    @Core.Label: 'Quantity Per'
+    quantityPer: Quantity;
+    
+    @Core.Label: 'Scrap Percentage'
+    scrapPercent: Decimal(5, 2) default 0;
+    
+    @Core.Label: 'Unit of Measure'
+    uom: UnitOfMeasure;
+    
+    @Core.Label: 'Operation Sequence'
+    operationSeq: Integer;
+    
+    isOptional: Boolean default false;
+    
+    remarks: String(500);
+}
+
+// ============================================================
+// WORK CENTER / RESOURCE
+// ============================================================
+
+@Core.Description: 'Work Center / Production Resource'
+entity WorkCenter : Auditable {
+    key ID: UUID;
+    
+    @Sequence.Pattern: 'WC-{seq:4}'
+    code: String(20);
+    
+    name: String(100);
+    description: String(500);
+    
+    @Core.Label: 'Work Center Type'
+    wcType: WorkCenterType;
+    
+    // Location
+    plant: association [0,1] to Plant;
+    department: String(50);
+    
+    // Capacity
+    @Core.Label: 'Hours per Day'
+    hoursPerDay: Decimal(4, 2) default 8;
+    
+    @Core.Label: 'Efficiency %'
+    efficiencyPercent: Decimal(5, 2) default 100;
+    
+    @Core.Label: 'Utilization %'
+    utilizationPercent: Decimal(5, 2) default 85;
+    
+    // Costing
+    @Core.Label: 'Labor Rate/Hour'
+    laborRatePerHour: UnitCost;
+    
+    @Core.Label: 'Overhead Rate/Hour'
+    overheadRatePerHour: UnitCost;
+    
+    @Core.Label: 'Machine Rate/Hour'
+    machineRatePerHour: UnitCost;
+    
+    isActive: Boolean default true;
+}
+
+enum WorkCenterType {
+    Machine;
+    ManualLabor;
+    Assembly;
+    Packaging;
+    QualityControl;
+    Warehouse;
+}
+
+// ============================================================
+// ROUTING (OPERATIONS)
+// ============================================================
+
+@Core.Description: 'Manufacturing Routing'
+entity Routing : Auditable {
+    key ID: UUID;
+    
+    @Sequence.Pattern: 'RTG-{seq:6}'
+    routingNumber: String(50);
+    
+    @Core.Label: 'Parent Item'
+    item: association [1] to Item;
+    
+    version: String(10) default '1.0';
+    description: String(500);
+    
+    effectiveFrom: Date;
+    effectiveTo: Date;
+    
+    isActive: Boolean default true;
+    
+    operations: composition [*] of RoutingOperation;
+}
+
+entity RoutingOperation {
+    key ID: UUID;
+    
+    @Core.Label: 'Operation Sequence'
+    operationSeq: Integer;
+    
+    @Core.Label: 'Operation Code'
+    operationCode: String(20);
+    
+    description: String(200);
+    
+    @Core.Label: 'Work Center'
+    workCenter: association [1] to WorkCenter;
+    
+    // Time
+    @Core.Label: 'Setup Time (Hours)'
+    setupTimeHours: Decimal(8, 2);
+    
+    @Core.Label: 'Run Time (Hours per Unit)'
+    runTimePerUnit: Decimal(8, 4);
+    
+    @Core.Label: 'Queue Time (Hours)'
+    queueTimeHours: Decimal(8, 2);
+    
+    @Core.Label: 'Move Time (Hours)'
+    moveTimeHours: Decimal(8, 2);
+    
+    // Instructions
+    workInstructions: String(4000);
+    
+    isOutsourced: Boolean default false;
+}
+
+// ============================================================
+// VENDOR / SUPPLIER
+// ============================================================
+
+@Core.Description: 'Vendor/Supplier Master'
+@Tenant.Aware: true
+@Company.Aware: true
+entity Vendor : Auditable {
+    key ID: UUID;
+    
+    @Sequence.Pattern: 'VND-{seq:6}'
+    vendorCode: String(50);
+    
+    @Core.Mandatory: true
+    name: String(200);
+    
+    legalName: String(200);
+    
+    taxId: String(50);
+    
+    // Contact
+    contactPerson: String(100);
+    phone: String(30);
+    email: String(100);
+    website: String(200);
+    
+    // Address
+    addressLine1: String(200);
+    addressLine2: String(200);
+    city: String(100);
+    state: String(100);
+    country: String(100);
+    postalCode: String(20);
+    
+    // Payment
+    paymentTerms: String(50);
+    currency: String(3);
+    
+    // Rating
+    @Core.Label: 'Quality Rating'
+    qualityRating: Decimal(3, 2);
+    
+    @Core.Label: 'Delivery Rating'
+    deliveryRating: Decimal(3, 2);
+    
+    vendorType: VendorType;
+    status: VendorStatus default #Active;
+}
+
+enum VendorType {
+    Manufacturer;
+    Distributor;
+    Contractor;
+    ServiceProvider;
+}
+
+enum VendorStatus {
+    Active;
+    OnHold;
+    Blacklisted;
+    Inactive;
+}
+
+// ============================================================
+// PLANT / WAREHOUSE
+// ============================================================
+
+entity Plant : Auditable {
+    key ID: UUID;
+    
+    @Sequence.Pattern: 'PLT-{seq:3}'
+    plantCode: String(20);
+    
+    name: String(100);
+    description: String(500);
+    
+    // Address
+    addressLine1: String(200);
+    city: String(100);
+    country: String(100);
+    
+    // Contact
+    contactPerson: String(100);
+    phone: String(30);
+    
+    isActive: Boolean default true;
+    
+    warehouses: composition [*] of Warehouse;
+}
+
+entity Warehouse : Auditable {
+    key ID: UUID;
+    
+    @Sequence.Pattern: 'WH-{plant}-{seq:3}'
+    warehouseCode: String(20);
+    
+    name: String(100);
+    warehouseType: WarehouseType;
+    
+    // Capacity
+    totalArea: Decimal(12, 2);
+    usableArea: Decimal(12, 2);
+    
+    isActive: Boolean default true;
+    
+    zones: composition [*] of WarehouseZone;
+}
+
+entity WarehouseZone {
+    key ID: UUID;
+    
+    zoneCode: String(20);
+    name: String(100);
+    
+    zoneType: ZoneType;
+    
+    // Temperature control
+    minTemperature: Decimal(5, 2);
+    maxTemperature: Decimal(5, 2);
+    
+    isActive: Boolean default true;
+}
+
+enum WarehouseType {
+    RawMaterial;
+    FinishedGoods;
+    WIP;
+    Quarantine;
+    Transit;
+    Distribution;
+}
+
+enum ZoneType {
+    Bulk;
+    Racking;
+    ColdStorage;
+    Hazardous;
+    HighValue;
+    Picking;
+    Staging;
+}

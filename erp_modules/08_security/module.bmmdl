@@ -1,0 +1,82 @@
+﻿// ============================================================
+// Module: Security
+// Description: Access control and security policies (simplified)
+// Install Order: 8
+// ============================================================
+
+module Security version '1.0.0' {
+    author: 'ERP Team';
+    description: 'Access control and security for ERP';
+    depends on Services version '>=1.0.0';
+    imports Services, MasterData, Core;
+    publishes Security;
+
+    namespace Security {
+        // ============================================================
+        // ACCESS CONTROL CONFIGURATION
+        // ============================================================
+
+        @Description: 'Role definition'
+        entity Role : Auditable, TenantAware {
+            key ID: UUID;
+
+            roleCode: ShortCode;
+            roleName: Name;
+            roleDescription: Description;
+            isSystemRole: Boolean default false;
+            isActive: Boolean default true;
+
+            permissions: composition [*] of RolePermission;
+        }
+
+        @Description: 'Permission assignment to role'
+        entity RolePermission {
+            key ID: UUID;
+
+            targetEntity: String(100);
+            permissionAction: PermissionAction;
+            condition: Description;
+        }
+
+        enum PermissionAction {
+            Create;
+            Read;
+            Update;
+            Delete;
+            Execute;
+        }
+
+        @Description: 'User role assignment'
+        entity UserRole : Auditable, TenantAware {
+            key ID: UUID;
+
+            userId: UUID;
+            userRole: association [1] to Role;
+            assignedAt: Timestamp default $now;
+            expiresAt: Timestamp;
+        }
+
+        // ============================================================
+        // FIELD SECURITY
+        // ============================================================
+
+        @Description: 'Field-level security configuration'
+        entity FieldSecurity : Auditable, TenantAware {
+            key ID: UUID;
+
+            targetEntity: String(100);
+            fieldName: String(100);
+            securityRole: association [1] to Role;
+            visibility: FieldVisibility default #Visible;
+            maskPattern: String(50);
+        }
+
+        enum FieldVisibility {
+            Visible;
+            Hidden;
+            Masked;
+            ReadOnly;
+        }
+
+    }
+}

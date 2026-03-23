@@ -1,0 +1,347 @@
+﻿// ============================================================
+// Module: Warehouse (Test Module for Temporal Features)
+// Description: Warehouse management with temporal/bitemporal entities
+// Install Order: 11
+// Purpose: Test temporal syntax and DDL generation
+// ============================================================
+
+module Warehouse version '1.0.0' {
+    author: 'BMMDL Test';
+    description: 'Warehouse management test module for temporal features';
+    depends on MasterData version '>=1.0.0';
+    imports MasterData, Core;
+    publishes Warehouse;
+
+    namespace Warehouse {
+        // ============================================================
+        // MASTER DATA (Non-Temporal)
+        // ============================================================
+
+        @Description: 'Physical warehouse location'
+        entity Warehouse : Auditable, TenantAware, CompanyAware {
+            key id: UUID;
+
+            code: Code;
+            name: Name;
+
+            address: Address;
+
+            isActive: Boolean default true;
+
+            unique index idx_warehouse_code on (code);
+        }
+
+        @Description: 'Logical zone within a warehouse'
+        entity StorageZone : Auditable, TenantAware {
+            key id: UUID;
+
+            warehouse: association [1] to Warehouse;
+
+            code: Code;
+            name: Name;
+            zoneType: ZoneType default #General;
+
+            // Storage conditions
+            temperatureMin: Decimal(5,2);
+            temperatureMax: Decimal(5,2);
+            humidityControl: Boolean default false;
+
+            unique index idx_zone_code on (warehouse, code);
+        }
+
+        enum ZoneType {
+            General;
+            Refrigerated;
+            Frozen;
+            Hazardous;
+            HighValue;
+            Quarantine;
+            Shipping;
+            Receiving;
+        }
+
+        @Description: 'Physical bin/shelf location'
+        entity StorageLocation : Auditable, TenantAware {
+            key id: UUID;
+
+            zone: association [1] to StorageZone;
+
+            code: Code;
+            aisle: String(10);
+            rack: String(10);
+            level: String(10);
+            bin: String(10);
+
+            maxWeight: Decimal(10,2);
+            maxVolume: Decimal(10,3);
+
+            isActive: Boolean default true;
+
+            unique index idx_location_code on (zone, code);
+        }
+
+        // ============================================================
+        // TEMPORAL ENTITIES - Test @Temporal (Inline Strategy)
+        // ============================================================
+
+        @Description: 'Current stock level per product/location - tracks history inline'
+        @Temporal
+        entity StockLevel : Auditable, TenantAware {
+            key id: UUID;
+
+            product: association [1] to Product;
+            location: association [1] to StorageLocation;
+
+            quantityOnHand: Quantity default 0;
+            quantityReserved: Quantity default 0;
+            quantityInTransit: Quantity default 0;
+
+            // Computed available = onHand - reserved
+            quantityAvailable: Quantity computed = quantityOnHand - quantityReserved;
+
+            lotNumber: String(50);
+            expiryDate: Date;
+
+            lastCountDate: Date;
+            lastMovementDate: Timestamp;
+        }
+
+        // ============================================================
+        // BITEMPORAL ENTITY - Test @Temporal + @Temporal.ValidTime
+        // ============================================================
+
+        @Description: 'Inventory valuation with business-valid time periods'
+        @Temporal
+        @Temporal.ValidTime { from: 'effectiveFrom', to: 'effectiveTo' }
+        entity InventoryValuation : Auditable, TenantAware, CompanyAware {
+            key id: UUID;
+
+            product: association [1] to Product;
+            warehouse: association [1] to Warehouse;
+
+            // Valuation period (business time)
+            effectiveFrom: Date;
+            effectiveTo: Date;
+
+            // Valuation method and amounts
+            valuationMethod: ValuationMethod default #WeightedAverage;
+            unitCost: Amount;
+            totalQuantity: Quantity;
+            totalValue: Amount computed = unitCost * totalQuantity;
+
+            // Cost breakdown
+            purchaseCost: Amount default 0;
+            landedCost: Amount default 0;
+            adjustmentAmount: Amount default 0;
+        }
+
+        enum ValuationMethod {
+            FIFO;
+            LIFO;
+            WeightedAverage;
+            StandardCost;
+            SpecificIdentification;
+        }
+
+        // ============================================================
+        // VALID TIME ONLY - Test @Temporal.ValidTime without @Temporal
+        // ============================================================
+
+        @Description: 'Price list with validity periods'
+        @Temporal.ValidTime { from: 'validFrom', to: 'validTo' }
+        entity PriceList : Auditable, TenantAware, CompanyAware {
+            key id: UUID;
+
+            product: association [1] to Product;
+
+            // Validity period
+            validFrom: Date;
+            validTo: Date;
+
+            // Pricing
+            listPrice: Amount;
+            minPrice: Amount;
+            currency: String(3) default 'VND';
+
+            // Discount tiers
+            tier1Qty: Quantity default 0;
+            tier1Discount: Percentage default 0;
+            tier2Qty: Quantity default 0;
+            tier2Discount: Percentage default 0;
+            tier3Qty: Quantity default 0;
+            tier3Discount: Percentage default 0;
+
+            isActive: Boolean default true;
+
+            unique index idx_pricelist_product on (product, validFrom);
+        }
+
+        // ============================================================
+        // TEMPORAL WITH SEPARATE STRATEGY - Test history table
+        // ============================================================
+
+        @Description: 'Stock reservation with separate history table'
+        @Temporal { strategy: 'separate' }
+        entity StockReservation : Auditable, TenantAware {
+            key id: UUID;
+
+            product: association [1] to Product;
+            location: association [1] to StorageLocation;
+
+            // Reservation details
+            reservedQuantity: Quantity;
+            reservedBy: String(100);
+            reservationDate: Timestamp default $now;
+            expiryDate: Timestamp;
+
+            // Reference to source document
+            referenceType: ReservationType;
+            referenceId: UUID;
+            referenceNumber: String(50);
+
+            status: ReservationStatus default #Active;
+
+            notes: Description;
+        }
+
+        enum ReservationType {
+            SalesOrder;
+            TransferOrder;
+            ProductionOrder;
+            Manual;
+        }
+
+        enum ReservationStatus {
+            Active;
+            PartiallyFulfilled;
+            Fulfilled;
+            Expired;
+            Cancelled;
+        }
+
+        // ============================================================
+        // TRANSACTION ENTITIES (Non-Temporal - Immutable Logs)
+        // ============================================================
+
+        @Description: 'Stock movement transaction - immutable record'
+        entity StockMovement : Auditable, TenantAware {
+            key id: UUID;
+
+            @Sequence.Name: 'StockMovementSeq'
+            @Sequence.Pattern: 'SM-{year}{month}{day}-{seq:6}'
+            movementNumber: Code;
+
+            movementDate: Timestamp default $now;
+            movementType: MovementType;
+
+            product: association [1] to Product;
+            fromLocation: association [0,1] to StorageLocation;
+            toLocation: association [0,1] to StorageLocation;
+
+            quantity: Quantity;
+            unitCost: Amount;
+
+            lotNumber: String(50);
+
+            referenceType: String(50);
+            referenceId: UUID;
+            referenceNumber: String(50);
+
+            reason: Description;
+        }
+
+        enum MovementType {
+            Receipt;
+            Issue;
+            Transfer;
+            Adjustment;
+            Return;
+            Scrap;
+        }
+
+        @Description: 'Cycle count record - physical inventory check'
+        entity CycleCount : Auditable, TenantAware {
+            key id: UUID;
+
+            @Sequence.Name: 'CycleCountSeq'
+            @Sequence.Pattern: 'CC-{year}{month}-{seq:5}'
+            countNumber: Code;
+
+            countDate: Date default $today;
+            location: association [1] to StorageLocation;
+
+            status: CycleCountStatus default #Planned;
+
+            countedBy: String(100);
+            verifiedBy: String(100);
+
+            items: composition [*] of CycleCountItem;
+        }
+
+        entity CycleCountItem : TenantAware {
+            key id: UUID;
+
+            product: association [1] to Product;
+            lotNumber: String(50);
+
+            systemQuantity: Quantity;
+            countedQuantity: Quantity;
+            variance: Quantity computed = countedQuantity - systemQuantity;
+
+            varianceReason: String(200);
+            isApproved: Boolean default false;
+        }
+
+        enum CycleCountStatus {
+            Planned;
+            InProgress;
+            PendingApproval;
+            Approved;
+            Posted;
+            Cancelled;
+        }
+
+        @Description: 'Stock adjustment entry'
+        entity StockAdjustment : Auditable, TenantAware {
+            key id: UUID;
+
+            @Sequence.Name: 'StockAdjustmentSeq'
+            @Sequence.Pattern: 'ADJ-{year}{month}-{seq:5}'
+            adjustmentNumber: Code;
+
+            adjustmentDate: Date default $today;
+            location: association [1] to StorageLocation;
+
+            product: association [1] to Product;
+            lotNumber: String(50);
+
+            adjustmentType: AdjustmentType;
+            quantity: Quantity;
+            unitCost: Amount;
+
+            reason: Description;
+
+            approvedBy: String(100);
+            approvalDate: Timestamp;
+
+            status: AdjustmentStatus default #Draft;
+        }
+
+        enum AdjustmentType {
+            QuantityIncrease;
+            QuantityDecrease;
+            CostAdjustment;
+            DamageWriteOff;
+            ExpiryWriteOff;
+        }
+
+        enum AdjustmentStatus {
+            Draft;
+            PendingApproval;
+            Approved;
+            Posted;
+            Rejected;
+        }
+
+    }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "BMMDL.Plugin.Inheritance",
+  "version": "1.0.0",
+  "description": "Table-per-type inheritance — discriminator column, parent FK, INNER JOIN queries",
+  "author": "BMMDL Team",
+  "entryAssembly": "BMMDL.Plugin.Inheritance.dll",
+  "dependencies": [],
+  "bmmdlModules": [],
+  "autoLoad": true
+}

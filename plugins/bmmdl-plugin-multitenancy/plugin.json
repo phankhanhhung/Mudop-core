@@ -1,0 +1,10 @@
+{
+  "name": "BMMDL.Plugin.MultiTenancy",
+  "version": "1.0.0",
+  "description": "Multi-tenancy — tenant_id column, RLS, tenant entity, System Tenant seeding",
+  "author": "BMMDL Team",
+  "entryAssembly": "BMMDL.Plugin.MultiTenancy.dll",
+  "dependencies": [],
+  "bmmdlModules": [],
+  "autoLoad": true
+}

@@ -1,0 +1,329 @@
+// ============================================================
+// Module: WarehouseTest (Standalone Test Module for Temporal Features)
+// Description: Simplified warehouse for E2E testing
+// Install Order: 11
+// Purpose: Test temporal syntax and DDL generation without dependencies
+// ============================================================
+
+module WarehouseTest version '1.0.0' {
+    author: 'BMMDL Test';
+    description: 'Standalone warehouse test module for temporal features';
+    publishes WarehouseTest;
+
+    namespace WarehouseTest {
+        // ============================================================
+        // LOCAL ASPECTS (standalone module, no Platform dependency)
+        // ============================================================
+        
+        aspect TenantAware {
+            tenantId: UUID;
+        }
+        
+        aspect Auditable {
+            createdAt: Timestamp;
+            createdBy: UUID;
+            modifiedAt: Timestamp;
+            modifiedBy: UUID;
+        }
+        
+        // ============================================================
+        // LOCAL TYPES (standalone module, no Platform dependency)
+        // ============================================================
+        
+        type Amount : Decimal(15, 2);
+        type Code : String(50);
+        type Name : String(100);
+        
+        // ============================================================
+        // MASTER DATA (Non-Temporal)
+        // ============================================================
+
+        @Description: 'Physical warehouse location'
+        entity TestWarehouse : Auditable, TenantAware {
+            key id: UUID;
+
+            code: String(50);
+            name: String(100);
+
+            isActive: Boolean default true;
+
+            unique index idx_warehouse_code on (code);
+        }
+
+        @Description: 'Logical zone within a warehouse'
+        entity TestStorageZone : Auditable, TenantAware {
+            key id: UUID;
+
+            warehouse: association [1] to TestWarehouse;
+
+            code: String(50);
+            name: String(100);
+            zoneType: TestZoneType default #General;
+
+            unique index idx_zone_code on (warehouse, code);
+        }
+
+        enum TestZoneType {
+            General;
+            Refrigerated;
+            Frozen;
+            Hazardous;
+        }
+
+        @Description: 'Physical bin/shelf location'
+        entity TestStorageLocation : Auditable, TenantAware {
+            key id: UUID;
+
+            zone: association [1] to TestStorageZone;
+
+            code: String(50);
+            aisle: String(10);
+            rack: String(10);
+            level: String(10);
+            bin: String(10);
+
+            isActive: Boolean default true;
+
+            unique index idx_location_code on (zone, code);
+        }
+
+        // ============================================================
+        // TEMPORAL ENTITIES - Test @Temporal (Inline Strategy)
+        // ============================================================
+
+        @Description: 'Current stock level - tracks history inline'
+        @Temporal
+        entity TestStockLevel : Auditable, TenantAware {
+            key id: UUID;
+
+            location: association [1] to TestStorageLocation;
+            productSku: String(50);
+
+            quantityOnHand: Integer default 0;
+            quantityReserved: Integer default 0;
+
+            // === COMPUTED FIELD: quantityAvailable = quantityOnHand - quantityReserved ===
+            quantityAvailable: Integer computed = quantityOnHand - quantityReserved;
+
+            lotNumber: String(50);
+            expiryDate: Date;
+
+            lastMovementDate: Timestamp;
+
+            // === CONSTRAINTS: Now working after DDL generator fix ===
+            constraint ValidQuantityOnHand check (quantityOnHand >= 0);
+            constraint ValidQuantityReserved check (quantityReserved >= 0);
+            constraint ReservedNotExceedOnHand check (quantityReserved <= quantityOnHand);
+        }
+
+        // ============================================================
+        // TEMPORAL WITH SEPARATE STRATEGY - Test history table
+        // ============================================================
+
+        @Description: 'Stock reservation with separate history table'
+        @Temporal { strategy: 'separate' }
+        entity TestStockReservation : Auditable, TenantAware {
+            key id: UUID;
+
+            location: association [1] to TestStorageLocation;
+            productSku: String(50);
+
+            reservedQuantity: Integer;
+            reservedBy: String(100);
+            reservationDate: Timestamp default $now;
+
+            status: TestReservationStatus default #Active;
+
+            notes: String(500);
+        }
+
+        enum TestReservationStatus {
+            Active;
+            Fulfilled;
+            Expired;
+            Cancelled;
+        }
+
+        // ============================================================
+        // SIMPLE TEST ENTITY - For Business Rules Testing
+        // ============================================================
+
+        @Description: 'Simple product for testing computed fields and validation rules'
+        entity TestProduct : Auditable, TenantAware {
+            key id: UUID;
+
+            sku: String(50);
+            name: String(100);
+            description: String(500);
+
+            // Pricing
+            costPrice: Decimal(15, 2) default 0;
+            sellingPrice: Decimal(15, 2) default 0;
+
+            // === COMPUTED FIELDS ===
+            profit: Decimal(15, 2) computed = sellingPrice - costPrice;
+            
+            // profitMargin depends on profit field (chained computed - may not work in PostgreSQL GENERATED)
+            // profitMargin: Decimal computed = (profit / sellingPrice) * 100;
+
+            // Stock
+            minStockLevel: Integer default 0;
+            maxStockLevel: Integer default 1000;
+            reorderPoint: Integer default 10;
+            stockLevel: Integer default 0;
+
+            isActive: Boolean default true;
+
+            // === VALIDATION CONSTRAINTS ===
+            // Note: ValidMaxStock and ValidReorderPoint moved to RuleEngine for custom error messages
+            constraint ValidCostPrice check (costPrice >= 0);
+            constraint ValidSellingPrice check (sellingPrice >= 0);
+            constraint ValidMinStock check (minStockLevel >= 0);
+            // constraint ValidMaxStock check (maxStockLevel >= minStockLevel);  -- Handled by RuleEngine
+            // constraint ValidReorderPoint check (...);  -- Handled by RuleEngine
+            
+            // Unique SKU per tenant
+            unique index idx_product_sku on (sku);
+            
+            // === BOUNDED ACTION ===
+            action Restock(quantity: Integer, lotNumber: String) returns Boolean {
+                // Update stock level
+                compute stockLevel = stockLevel + quantity;
+                return true;
+            }
+            
+            // === BOUNDED FUNCTION ===
+            function GetEffectivePrice(discount: Decimal) returns Decimal {
+                // Calculate price after discount
+                return sellingPrice * (1 - discount);
+            }
+        }
+        // ============================================================
+        // BUSINESS RULES - Executed by RuleEngine at runtime
+        // Syntax: rule Name for Entity on trigger1, trigger2 { statements; }
+        // ============================================================
+
+        // Rule 1: Validate profit margin on create and update
+        rule ValidateProfitMargin for TestProduct on before create, before update {
+            validate sellingPrice > costPrice message 'Selling price must be greater than cost price for profit' severity error;
+        }
+
+        // Rule 2: Validate stock level consistency
+        rule ValidateStockLevels for TestProduct on before create, before update {
+            validate minStockLevel < maxStockLevel message 'Minimum stock level must be less than maximum stock level' severity error;
+            validate reorderPoint >= minStockLevel message 'Reorder point must be at least the minimum stock level' severity warning;
+        }
+
+        // Rule 3: Compute default reorder point on create
+        rule ComputeProductDefaults for TestProduct on before create {
+            when reorderPoint = 0 then {
+                compute reorderPoint = maxStockLevel * 0.1;
+            }
+        }
+
+        // ============================================================
+        // COMPOSITION TEST ENTITIES - For Deep Insert/Containment Testing
+        // ============================================================
+
+        @Description: 'Order entity for composition testing'
+        entity TestOrder : Auditable, TenantAware {
+            key id: UUID;
+            orderNumber: String(50);
+            customerName: String(100);
+            totalAmount: Decimal(18,2) default 0;
+            status: String(20) default 'draft';
+            items: composition [*] of TestOrderItem;
+        }
+
+        @Description: 'Order item - child of TestOrder via composition'
+        entity TestOrderItem : TenantAware {
+            key id: UUID;
+            productName: String(100);
+            quantity: Integer default 1;
+            unitPrice: Decimal(18,2) default 0;
+        }
+
+        // ============================================================
+        // SERVICE DEFINITIONS - OData Actions/Functions exposed via $metadata
+        // ============================================================
+
+        @Description: 'Warehouse management service operations'
+        service WarehouseService {
+            // Entity projections (required for service exposure check)
+            entity TestWarehouse as TestWarehouse;
+            entity TestStorageZone as TestStorageZone;
+            entity TestStorageLocation as TestStorageLocation;
+            entity TestStockLevel as TestStockLevel;
+            entity TestStockReservation as TestStockReservation;
+            entity TestProduct as TestProduct;
+            entity TestOrder as TestOrder;
+            entity TestOrderItem as TestOrderItem;
+            entity TestDocument as TestDocument;
+            entity TestSystemSettings as TestSystemSettings;
+
+            // === UNBOUNDED ACTION ===
+            // POST /api/odata/services/WarehouseService/InitializeWarehouse
+            @Description: 'Initialize a new warehouse with default zones'
+            action InitializeWarehouse(
+                warehouseCode: String,
+                warehouseName: String,
+                zoneCount: Integer
+            ) returns UUID;
+
+            // === UNBOUNDED FUNCTION ===
+            // GET /api/odata/services/WarehouseService/GetTotalWarehouses()
+            @Description: 'Get total warehouses count'
+            function GetTotalWarehouses() returns Integer;
+
+            // === UNBOUNDED FUNCTION with params ===
+            // GET /api/odata/services/WarehouseService/CheckStockLevel(sku='ABC')
+            @Description: 'Check stock level for a product SKU'
+            function CheckStockLevel(sku: String) returns Integer;
+        }
+
+        // ============================================================
+        // MEDIA ENTITY - For HasStream / Entity-Level Media Stream Testing
+        // ============================================================
+
+        @Description: 'Document entity with entity-level media stream support'
+        @HasStream { maxSize: 1048576 }
+        entity TestDocument : Auditable, TenantAware {
+            key id: UUID;
+
+            title: String(200);
+            category: String(100);
+        }
+
+        // ============================================================
+        // SINGLETON ENTITY - For @OData.Singleton Testing
+        // ============================================================
+
+        @Description: 'System-wide settings (singleton entity)'
+        @OData.Singleton
+        entity TestSystemSettings : TenantAware {
+            key id: UUID;
+
+            systemName: String(100);
+            defaultCurrency: String(3) default 'USD';
+            maxLoginAttempts: Integer default 5;
+            sessionTimeoutMinutes: Integer default 30;
+            maintenanceMode: Boolean default false;
+        }
+
+        // ============================================================
+        // SEQUENCE - For Sequence Testing
+        // ============================================================
+
+        sequence WarehouseSequence {
+            start: 1000;
+            increment: 1;
+        }
+
+        // ============================================================
+        // VIEW - For Dynamic View Testing
+        // ============================================================
+
+        view ActiveProductsView as select id, sku, name, sellingPrice from TestProduct where isActive = true
+
+    }
+}

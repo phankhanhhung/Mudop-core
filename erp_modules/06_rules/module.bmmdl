@@ -1,0 +1,40 @@
+﻿// ============================================================
+// Module: Rules
+// Description: Business rules for all domains (simplified)
+// Install Order: 6
+// ============================================================
+
+module Rules version '1.0.0' {
+    author: 'ERP Team';
+    description: 'Business rules and validations for ERP';
+    depends on HR version '>=1.0.0';
+    depends on Finance version '>=1.0.0';
+    depends on SCM version '>=1.0.0';
+    imports HR, Finance, SCM, MasterData, Core;
+    publishes Rules;
+
+    namespace Rules {
+        // Note: Advanced rule syntax (on before, on change, etc.) 
+        // requires grammar enhancement. Using placeholder entity for now.
+
+        @Description: 'Rule configuration placeholder'
+        entity RuleConfiguration : Auditable, TenantAware {
+            key ID: UUID;
+
+            ruleName: Name;
+            ruleType: RuleType;
+            targetEntity: String(100);
+            condition: Description;
+            ruleAction: Description;
+            isActive: Boolean default true;
+        }
+
+        enum RuleType {
+            Validation;
+            Computation;
+            Trigger;
+            Constraint;
+        }
+
+    }
+}

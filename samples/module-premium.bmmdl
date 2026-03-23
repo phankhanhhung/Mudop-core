@@ -1,0 +1,61 @@
+﻿// ============================================================
+// BMMDL Sample: Module with Dependencies
+// Tests the
+
+module PremiumFeatures version '1.0.0' {
+    author: 'DevTeam';
+    description: 'Premium features that extend SimpleECommerce';
+    depends on SimpleECommerce version '>=1.0.0';
+    imports SimpleECommerce;
+    publishes Premium;
+
+    namespace Premium {
+        // Premium customer tier
+        enum CustomerTier {
+            Bronze;
+            Silver;
+            Gold;
+            Platinum;
+        }
+
+        // Subscription for premium features
+        entity Subscription {
+            key ID: UUID;
+
+            // Reference to customer in base module
+            customer: association [1] to SimpleECommerce.Customer;
+            customerID: UUID;
+
+            tier: CustomerTier default #Bronze;
+            startDate: Date;
+            endDate: Date;
+
+            monthlyFee: Decimal(18, 2);
+            isActive: Boolean default true;
+
+            index idx_customer on (customerID);
+        }
+
+        // Loyalty program
+        entity LoyaltyPoints {
+            key ID: UUID;
+
+            customer: association [1] to SimpleECommerce.Customer;
+            customerID: UUID;
+
+            points: Integer default 0;
+            expiryDate: Date;
+
+            index idx_customer_points on (customerID);
+        }
+
+        // Premium service
+        service PremiumService {
+            function getSubscription(customerId: UUID) returns Subscription;
+            function getLoyaltyPoints(customerId: UUID) returns LoyaltyPoints;
+            action upgradeSubscription(subscriptionId: UUID, newTier: CustomerTier);
+            action addLoyaltyPoints(customerId: UUID, points: Integer);
+        }
+
+    }
+}

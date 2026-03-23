@@ -1,0 +1,6 @@
+export { usePluginRegistry } from './pluginRegistry'
+export type { PluginInfo } from './pluginRegistry'
+export { generatePluginRoutes } from './pluginRouter'
+export { getPluginMenuItems, mergeMenuItems } from './pluginMenu'
+export type { MenuItem } from './pluginMenu'
+export type { PluginSettingsSchema } from '@/services/pluginService'

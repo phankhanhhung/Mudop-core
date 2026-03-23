@@ -1,0 +1,329 @@
+// ============================================================
+// BMMDL Sample: Payroll - Views and Services (Complex SQL)
+// Domain: Payroll Processing
+// Coverage: Complex aggregates, tax calculations, period summaries
+// ============================================================
+
+namespace Payroll;
+
+// ============================================================
+// PAYROLL SUMMARY VIEWS
+// ============================================================
+
+@Core.Description: 'Payroll period summary'
+define view PayrollPeriodSummary as
+    select
+        pp.ID,
+        pp.periodCode,
+        pp.periodName,
+        pp.startDate,
+        pp.endDate,
+        pp.payDate,
+        pp.status,
+        count(pr.ID),
+        sum(pr.basicSalary),
+        sum(pr.totalEarnings),
+        sum(pr.totalDeductions),
+        sum(pr.totalTax),
+        sum(pr.netPay),
+        avg(pr.netPay),
+        min(pr.netPay),
+        max(pr.netPay),
+        sum(pr.overtimeHours),
+        case pp.status
+            when #Draft then 'Not Started'
+            when #Processing then 'In Progress'
+            when #Calculated then 'Awaiting Approval'
+            when #Approved then 'Ready to Pay'
+            when #Paid then 'Completed'
+            when #Cancelled then 'Cancelled'
+            else 'Unknown'
+        end
+    from PayrollPeriod as pp
+    left join PayrollRun as pr on pr.periodID = pp.ID
+    group by pp.ID, pp.periodCode, pp.periodName, pp.startDate, pp.endDate, pp.payDate, pp.status
+
+@Core.Description: 'Individual payslip view'
+define view Payslip as
+    select
+        pr.ID,
+        pr.runNumber,
+        emp.employeeCode,
+        concat(emp.firstName, ' ', emp.lastName),
+        dept.name,
+        pos.title,
+        pp.periodName,
+        pr.periodStartDate,
+        pr.periodEndDate,
+        pr.payDate,
+        pr.workingDays,
+        pr.daysWorked,
+        pr.regularHours,
+        pr.overtimeHours,
+        pr.basicSalary,
+        pr.dailyRate,
+        pr.hourlyRate,
+        pr.totalEarnings,
+        pr.totalDeductions,
+        pr.totalTax,
+        pr.netPay,
+        pr.ytdGross,
+        pr.ytdTax,
+        pr.ytdNet,
+        pr.paymentReference,
+        pr.status
+    from PayrollRun as pr
+    inner join HR.Employee as emp on pr.employeeID = emp.ID
+    inner join HR.Department as dept on emp.departmentID = dept.ID
+    inner join HR.Position as pos on emp.positionID = pos.ID
+    inner join PayrollPeriod as pp on pr.periodID = pp.ID
+
+@Core.Description: 'Earnings breakdown by category'
+define view EarningsBreakdown as
+    select
+        pp.periodCode,
+        ec.earningType,
+        ec.name,
+        count(pe.ID),
+        sum(pe.amount),
+        avg(pe.amount),
+        sum(pe.amount where pe.isTaxable = true),
+        sum(pe.amount where pe.isOvertime = true)
+    from PayrollPeriod as pp
+    inner join PayrollRun as pr on pr.periodID = pp.ID
+    inner join PayrollEarning as pe on pe.payrollRunID = pr.ID
+    inner join EarningConfig as ec on pe.earningConfigID = ec.ID
+    group by pp.periodCode, ec.earningType, ec.name
+
+@Core.Description: 'Deductions breakdown by category'
+define view DeductionsBreakdown as
+    select
+        pp.periodCode,
+        dc.deductionType,
+        dc.name,
+        count(pd.ID),
+        sum(pd.amount),
+        sum(pd.employerAmount),
+        sum(pd.amount) + sum(pd.employerAmount),
+        avg(pd.amount),
+        sum(pd.amount where pd.isPreTax = true),
+        sum(pd.amount where pd.isPreTax = false)
+    from PayrollPeriod as pp
+    inner join PayrollRun as pr on pr.periodID = pp.ID
+    inner join PayrollDeduction as pd on pd.payrollRunID = pr.ID
+    inner join DeductionConfig as dc on pd.deductionConfigID = dc.ID
+    group by pp.periodCode, dc.deductionType, dc.name
+
+// ============================================================
+// TAX SUMMARY VIEWS
+// ============================================================
+
+@Core.Description: 'Tax summary by type and period'
+define view TaxSummary as
+    select
+        pp.periodCode,
+        pp.periodName,
+        year(pp.startDate),
+        pt.taxType,
+        count(pt.ID),
+        sum(pt.taxableIncome),
+        sum(pt.taxAmount),
+        sum(pt.employerAmount),
+        avg(pt.taxRate),
+        min(pt.taxAmount),
+        max(pt.taxAmount)
+    from PayrollPeriod as pp
+    inner join PayrollRun as pr on pr.periodID = pp.ID
+    inner join PayrollTax as pt on pt.payrollRunID = pr.ID
+    group by pp.periodCode, pp.periodName, year(pp.startDate), pt.taxType
+
+@Core.Description: 'Year-to-date tax report'
+define view YTDTaxReport
+    with parameters (
+        p_yr: Integer
+    )
+as
+    select
+        emp.ID,
+        emp.employeeCode,
+        concat(emp.firstName, ' ', emp.lastName),
+        emp.socialSecurityNumber,
+        sum(pr.totalEarnings),
+        sum(pt.taxableIncome where pt.taxType = 'Federal'),
+        sum(pt.taxAmount where pt.taxType = 'Federal'),
+        sum(pt.taxAmount where pt.taxType = 'State'),
+        sum(pt.taxAmount where pt.taxType = 'Local'),
+        sum(pd.amount where pd.deductionType = #SocialSecurity),
+        sum(pd.amount where pd.deductionType = #HealthInsurance),
+        sum(pd.amount where pd.deductionType = #PensionFund),
+        sum(pr.totalTax),
+        sum(pr.netPay)
+    from HR.Employee as emp
+    inner join PayrollRun as pr on pr.employeeID = emp.ID
+    inner join PayrollPeriod as pp on pr.periodID = pp.ID and year(pp.startDate) = :p_year
+    left join PayrollTax as pt on pt.payrollRunID = pr.ID
+    left join PayrollDeduction as pd on pd.payrollRunID = pr.ID
+    where pr.status = #Paid
+    group by emp.ID, emp.employeeCode, emp.firstName, emp.lastName, emp.socialSecurityNumber
+
+// ============================================================
+// OVERTIME AND BONUS VIEWS
+// ============================================================
+
+@Core.Description: 'Overtime summary by department'
+define view OvertimeSummary as
+    select
+        dept.ID,
+        dept.name,
+        month(pr.periodStartDate),
+        year(pr.periodStartDate),
+        count(pr.ID where pr.overtimeHours > 0),
+        sum(pr.overtimeHours),
+        avg(pr.overtimeHours where pr.overtimeHours > 0),
+        max(pr.overtimeHours),
+        sum(pe.amount where pe.isOvertime = true),
+        round(sum(pr.overtimeHours) * avg(pr.hourlyRate) * 1.5, 2)
+    from HR.Department as dept
+    inner join HR.Employee as emp on emp.departmentID = dept.ID
+    inner join PayrollRun as pr on pr.employeeID = emp.ID
+    left join PayrollEarning as pe on pe.payrollRunID = pr.ID
+    group by dept.ID, dept.name, month(pr.periodStartDate), year(pr.periodStartDate)
+
+@Core.Description: 'Bonus payout summary'
+define view BonusPayoutSummary as
+    select
+        bp.ID,
+        bp.payoutCode,
+        bp.name,
+        bp.bonusType,
+        bp.effectiveDate,
+        bp.paymentDate,
+        bp.status,
+        count(eb.ID),
+        sum(eb.finalAmount),
+        avg(eb.finalAmount),
+        min(eb.finalAmount),
+        max(eb.finalAmount),
+        count(eb.ID where eb.status = 'Approved'),
+        count(eb.ID where eb.status = 'Paid'),
+        sum(eb.finalAmount where eb.isProcessed = true)
+    from BonusPayout as bp
+    left join EmployeeBonus as eb on eb.bonusPayoutID = bp.ID
+    group by bp.ID, bp.payoutCode, bp.name, bp.bonusType, bp.effectiveDate, bp.paymentDate, bp.status
+
+// ============================================================
+// COST ANALYSIS VIEWS
+// ============================================================
+
+@Core.Description: 'Department labor cost analysis'
+define view LaborCostByDepartment as
+    select
+        dept.ID,
+        dept.code,
+        dept.name,
+        pp.periodCode,
+        count(pr.ID),
+        sum(pr.basicSalary),
+        sum(pr.totalEarnings),
+        sum(pr.totalDeductions),
+        sum(pr.totalTax),
+        sum(pr.netPay),
+        sum(pd.employerAmount),
+        sum(pr.totalEarnings) + sum(pd.employerAmount),
+        avg(pr.totalEarnings),
+        round(sum(pr.totalEarnings) * 100.0 / nullif(sum(pr.totalEarnings), 0), 2)
+    from HR.Department as dept
+    inner join HR.Employee as emp on emp.departmentID = dept.ID
+    inner join PayrollRun as pr on pr.employeeID = emp.ID
+    inner join PayrollPeriod as pp on pr.periodID = pp.ID
+    left join PayrollDeduction as pd on pd.payrollRunID = pr.ID
+    group by dept.ID, dept.code, dept.name, pp.periodCode
+
+@Core.Description: 'Monthly payroll cost trend'
+define view PayrollCostTrend as
+    select
+        year(pp.startDate),
+        month(pp.startDate),
+        count(distinct pr.employeeID),
+        sum(pr.basicSalary),
+        sum(pr.totalEarnings),
+        sum(pe.amount where pe.isOvertime = true),
+        sum(pr.totalDeductions),
+        sum(pr.totalTax),
+        sum(pr.netPay),
+        sum(pd.employerAmount),
+        avg(pr.netPay),
+        sum(pr.totalEarnings) + sum(pd.employerAmount)
+    from PayrollPeriod as pp
+    inner join PayrollRun as pr on pr.periodID = pp.ID
+    left join PayrollEarning as pe on pe.payrollRunID = pr.ID
+    left join PayrollDeduction as pd on pd.payrollRunID = pr.ID
+    where pp.status = #Paid
+    group by year(pp.startDate), month(pp.startDate)
+    order by year(pp.startDate) desc, month(pp.startDate) desc
+
+// ============================================================
+// PAYROLL SERVICE DEFINITIONS
+// ============================================================
+
+@Core.Description: 'Payroll processing service'
+service PayrollService {
+    entity Periods as PayrollPeriod;
+    entity Runs as PayrollRun;
+    entity Earnings as PayrollEarning;
+    entity Deductions as PayrollDeduction;
+    entity Taxes as PayrollTax;
+    
+    entity PeriodSummary as PayrollPeriodSummary;
+    entity Payslips as Payslip;
+    entity EarningsReport as EarningsBreakdown;
+    entity DeductionsReport as DeductionsBreakdown;
+    entity TaxReport as TaxSummary;
+    entity CostAnalysis as LaborCostByDepartment;
+    entity CostTrend as PayrollCostTrend;
+    
+    // Period management
+    action createPeriod(startDate: Date, endDate: Date, payDate: Date) returns PayrollPeriod;
+    action processPeriod(periodId: UUID) returns PayrollPeriod;
+    action approvePeriod(periodId: UUID) returns PayrollPeriod;
+    action payPeriod(periodId: UUID, paymentDate: DateTime) returns PayrollPeriod;
+    action cancelPeriod(periodId: UUID, reason: String) returns PayrollPeriod;
+    
+    // Payroll run
+    action calculatePayroll(periodId: UUID, employeeId: UUID) returns PayrollRun;
+    action recalculatePayroll(runId: UUID) returns PayrollRun;
+    action addEarning(runId: UUID, earningConfigId: UUID, amount: Decimal) returns PayrollEarning;
+    action addDeduction(runId: UUID, deductionConfigId: UUID, amount: Decimal) returns PayrollDeduction;
+    
+    // Reports
+    function getPayslip(runId: UUID) returns Payslip;
+    function getEmployeePayHistory(employeeId: UUID, yr: Integer) returns PayrollRun;
+    function getYTDSummary(employeeId: UUID, yr: Integer) returns YTDTaxReport;
+    function getPeriodDetails(periodId: UUID) returns PayrollPeriodSummary;
+}
+
+@Core.Description: 'Overtime and bonus service'
+service BonusService {
+    entity OvertimeRequests as OvertimeRequest;
+    entity BonusPayouts as BonusPayout;
+    entity EmployeeBonuses as EmployeeBonus;
+    
+    entity OvertimeSummary as OvertimeSummary;
+    entity BonusSummary as BonusPayoutSummary;
+    
+    // Overtime
+    action requestOvertime(employeeId: UUID, overtimeDate: Date, hours: Decimal, reason: String) returns OvertimeRequest;
+    action approveOvertime(requestId: UUID, actualHours: Decimal) returns OvertimeRequest;
+    action rejectOvertime(requestId: UUID, reason: String) returns OvertimeRequest;
+    
+    // Bonus
+    action createBonusPayout(name: String, bonusType: String, effectiveDate: Date) returns BonusPayout;
+    action addEmployeeBonus(payoutId: UUID, employeeId: UUID, amount: Decimal) returns EmployeeBonus;
+    action calculateBonuses(payoutId: UUID) returns BonusPayout;
+    action approveBonusPayout(payoutId: UUID) returns BonusPayout;
+    action processBonusPayout(payoutId: UUID, periodId: UUID) returns BonusPayout;
+    
+    // Queries
+    function getOvertimeHistory(employeeId: UUID, startDate: Date, endDate: Date) returns OvertimeRequest;
+    function getBonusHistory(employeeId: UUID) returns EmployeeBonus;
+}

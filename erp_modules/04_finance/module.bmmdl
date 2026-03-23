@@ -1,0 +1,198 @@
+﻿// ============================================================
+// Module: Finance
+// Description: Payroll & Financial Management
+// Install Order: 4
+// ============================================================
+
+module Finance version '1.0.0' {
+    author: 'ERP Team';
+    description: 'Payroll and financial management module';
+    depends on HR version '>=1.0.0';
+    imports HR, MasterData, Core;
+    publishes Finance;
+
+    namespace Finance {
+        // ============================================================
+        // PAYROLL CONFIGURATION
+        // ============================================================
+
+        @Description: 'Salary structure template'
+        entity SalaryStructure : Auditable, TenantAware {
+            key ID: UUID;
+
+            code: ShortCode;
+            name: Name;
+
+            baseSalary: Amount;
+            currency: String(3) default 'USD';
+
+            components: composition [*] of SalaryComponent;
+
+            isActive: Boolean default true;
+        }
+
+        entity SalaryComponent {
+            key ID: UUID;
+
+            name: Name;
+            componentType: ComponentType;
+            calculationType: CalculationType;
+
+            amount: Amount;
+            percentage: Percentage;
+
+            isTaxable: Boolean default true;
+            isDeduction: Boolean default false;
+
+            sortOrder: Integer;
+        }
+
+        enum ComponentType {
+            BasicSalary;
+            HousingAllowance;
+            TransportAllowance;
+            Bonus;
+            Commission;
+            Overtime;
+            Tax;
+            Insurance;
+            PensionContribution;
+            LoanDeduction;
+            Other;
+        }
+
+        enum CalculationType {
+            Fixed;
+            Percentage;
+            Formula;
+        }
+
+        // ============================================================
+        // EMPLOYEE SALARY
+        // ============================================================
+
+        @Description: 'Employee salary assignment'
+        entity EmployeeSalary : Auditable, TenantAware, TimeBounded {
+            key ID: UUID;
+
+            employee: association [1] to Employee;
+            salaryStructure: association [1] to SalaryStructure;
+
+            baseSalary: Amount;
+            currency: String(3);
+
+            // Computed totals
+            @Computed
+            grossSalary: Amount;
+
+            @Computed
+            totalDeductions: Amount;
+
+            @Computed
+            netSalary: Amount;
+
+            status: Status default #Active;
+        }
+
+        // ============================================================
+        // PAYROLL PROCESSING
+        // ============================================================
+
+        @Description: 'Payroll period'
+        entity PayrollPeriod : Auditable, TenantAware, CompanyAware {
+            key ID: UUID;
+
+            @Sequence.Name: 'PayrollPeriodSeq'
+            @Sequence.Pattern: 'PP-{year}{month}'
+            periodCode: Code;
+
+            periodYear: Integer;
+            periodMonth: Integer;
+            startDate: Date;
+            endDate: Date;
+            payDate: Date;
+
+            status: PayrollStatus default #Draft;
+
+            totalGross: Amount;
+            totalDeductions: Amount;
+            totalNetPay: Amount;
+            employeeCount: Integer;
+
+            payslips: composition [*] of Payslip;
+        }
+
+        enum PayrollStatus {
+            Draft;
+            Processing;
+            Calculated;
+            Approved;
+            Paid;
+            Closed;
+        }
+
+        @Description: 'Employee payslip'
+        entity Payslip : Auditable, TenantAware {
+            key ID: UUID;
+
+            @Sequence.Name: 'PayslipSeq'
+            @Sequence.Pattern: 'PS-{period}-{seq:6}'
+            payslipNumber: Code;
+
+            employee: association [1] to Employee;
+
+            // Amounts
+            baseSalary: Amount;
+            grossEarnings: Amount;
+            totalDeductions: Amount;
+            netPay: Amount;
+
+            // Working days
+            workingDays: Integer;
+            daysWorked: Integer;
+            leaveDays: Quantity;
+            overtimeHours: Quantity;
+
+            status: PayslipStatus default #Draft;
+
+            lines: composition [*] of PayslipLine;
+        }
+
+        enum PayslipStatus {
+            Draft;
+            Calculated;
+            Approved;
+            Paid;
+        }
+
+        entity PayslipLine {
+            key ID: UUID;
+
+            componentName: Name;
+            componentType: ComponentType;
+
+            amount: Amount;
+            isDeduction: Boolean;
+
+            sortOrder: Integer;
+        }
+
+        // ============================================================
+        // TAX CONFIGURATION
+        // ============================================================
+
+        entity TaxBracket : Auditable, TenantAware, TimeBounded {
+            key ID: UUID;
+
+            name: Name;
+
+            minIncome: Amount;
+            maxIncome: Amount;
+            rate: Percentage;
+            fixedAmount: Amount default 0;
+
+            sortOrder: Integer;
+        }
+
+    }
+}

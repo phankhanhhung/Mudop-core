@@ -1,0 +1,144 @@
+// ============================================================
+// BMMDL Sample: HR - Leave Management
+// Domain: Human Resources - Leave/Absence Management
+// ============================================================
+
+namespace HR;
+
+// ============================================================
+// LEAVE POLICY AND BALANCE
+// ============================================================
+
+@Core.Description: 'Leave policy definition per employment type'
+entity LeavePolicy : Auditable, TenantAware {
+    key ID: UUID;
+    name: String(100);
+    description: String(500);
+    leaveType: LeaveType;
+    employmentType: EmploymentType;
+    
+    // Entitlement
+    annualEntitlement: Decimal(5, 2);
+    maxCarryForward: Decimal(5, 2) default 0;
+    maxAccumulation: Decimal(5, 2);
+    
+    // Accrual
+    accrualFrequency: String(20) default 'Monthly'; // Monthly, Yearly, Immediate
+    proRataFirstYear: Boolean default true;
+    
+    // Rules
+    minDaysPerRequest: Decimal(3, 1) default 0.5;
+    maxDaysPerRequest: Decimal(5, 2);
+    requiresApproval: Boolean default true;
+    advanceNoticeDays: Integer default 1;
+    allowNegativeBalance: Boolean default false;
+    
+    // Validity
+    effectiveFrom: Date;
+    effectiveTo: Date;
+    isActive: Boolean default true;
+}
+
+@Core.Description: 'Employee leave balance'
+entity LeaveBalance : Auditable {
+    key ID: UUID;
+    leaveType: LeaveType;
+    yr: Integer;
+    
+    // Balances
+    openingBalance: Decimal(5, 2) default 0;
+    accrued: Decimal(5, 2) default 0;
+    taken: Decimal(5, 2) default 0;
+    pendingApproval: Decimal(5, 2) default 0;
+    adjustment: Decimal(5, 2) default 0;
+    carryForward: Decimal(5, 2) default 0;
+    lapsed: Decimal(5, 2) default 0;
+    
+    // Computed available balance
+    availableBalance: Decimal(5, 2) default 0;
+    
+    employee: association [1] to Employee;
+    policy: association [1] to LeavePolicy;
+}
+
+// ============================================================
+// LEAVE REQUEST
+// ============================================================
+
+@Core.Description: 'Leave request/application'
+entity LeaveRequest : Auditable, TenantAware {
+    key ID: UUID;
+    requestNumber: String(20);
+    
+    // Leave Details
+    leaveType: LeaveType;
+    startDate: Date;
+    endDate: Date;
+    totalDays: Decimal(5, 2);
+    isHalfDay: Boolean default false;
+    halfDayType: String(10); // AM, PM
+    
+    // Reason
+    reason: String(1000);
+    
+    // Status
+    status: LeaveStatus default #Pending;
+    
+    // Approval
+    approvedBy: UUID;
+    approvedAt: DateTime;
+    rejectionReason: String(500);
+    
+    // Cancellation
+    cancelledAt: DateTime;
+    cancellationReason: String(500);
+    
+    // Attachment
+    attachmentUrl: String(500);
+    
+    // Relations
+    employee: association [1] to Employee;
+    
+    // Backup coverage
+    coveringEmployee: association [0,1] to Employee;
+}
+
+// ============================================================
+// ATTENDANCE
+// ============================================================
+
+@Core.Description: 'Daily attendance record'
+entity Attendance : Auditable {
+    key ID: UUID;
+    attendanceDate: Date;
+    
+    // Check In/Out
+    checkInTime: Time;
+    checkOutTime: Time;
+    
+    // Location (for mobile check-in)
+    checkInLatitude: Decimal(10, 8);
+    checkInLongitude: Decimal(11, 8);
+    checkOutLatitude: Decimal(10, 8);
+    checkOutLongitude: Decimal(11, 8);
+    
+    // Calculated
+    totalHours: Hours default 0;
+    overtimeHours: Hours default 0;
+    lateMinutes: Integer default 0;
+    earlyLeaveMinutes: Integer default 0;
+    
+    // Status
+    status: String(20) default 'Present'; // Present, Absent, Leave, Holiday, Weekend
+    isManualEntry: Boolean default false;
+    manualEntryReason: String(200);
+    
+    // Approval for manual/corrections
+    isApproved: Boolean default false;
+    approvedBy: UUID;
+    
+    employee: association [1] to Employee;
+}
+
+
+

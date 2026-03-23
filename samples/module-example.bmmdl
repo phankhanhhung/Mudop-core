@@ -1,0 +1,136 @@
+// ============================================================
+// BMMDL Sample: Module System Example
+// Demonstrates common BMMDL constructs for module packaging
+// ============================================================
+
+namespace ModuleExample;
+
+// Type definitions
+type Money : Decimal(18, 2);
+type Code : String(50);
+
+// Customer entity
+@Core.Description: 'Customer master data'
+entity Customer {
+    key ID: UUID;
+    
+    @Core.Label: 'Customer Code'
+    customerCode: Code;
+    
+    @Core.Mandatory: true
+    name: String(200);
+    
+    email: String(255);
+    phone: String(20);
+    
+    status: CustomerStatus default #Active;
+    creditLimit: Money default 0;
+    
+    // Compositions
+    addresses: composition [*] of CustomerAddress;
+    
+    // Indexes
+    unique index idx_customer_code on (customerCode);
+}
+
+entity CustomerAddress {
+    key ID: UUID;
+    
+    addressType: AddressType;
+    street: String(500);
+    city: String(100);
+    country: String(100);
+    postalCode: String(20);
+    isDefault: Boolean default false;
+}
+
+enum CustomerStatus {
+    Active;
+    Inactive;
+    Suspended;
+}
+
+enum AddressType {
+    Billing;
+    Shipping;
+}
+
+// Order entity
+@Core.Description: 'Sales order'
+entity Order {
+    key ID: UUID;
+    
+    orderNumber: Code;
+    orderDate: Date default $today;
+    
+    // Association to customer
+    customer: association [1] to Customer;
+    customerID: UUID;
+    
+    // Amounts
+    subtotal: Money default 0;
+    discountAmount: Money default 0;
+    taxAmount: Money default 0;
+    totalAmount: Money default 0;
+    
+    status: OrderStatus default #Draft;
+    
+    // Line items
+    items: composition [*] of OrderItem;
+    
+    // Indexes
+    unique index idx_order_number on (orderNumber);
+    index idx_order_date on (orderDate);
+}
+
+entity OrderItem {
+    key ID: UUID;
+    
+    product: association [1] to Product;
+    productID: UUID;
+    
+    quantity: Integer default 1;
+    unitPrice: Money;
+    lineTotal: Money default 0;
+    
+    index idx_product on (productID);
+}
+
+enum OrderStatus {
+    Draft;
+    Confirmed;
+    Shipped;
+    Delivered;
+    Cancelled;
+}
+
+// Product entity
+entity Product {
+    key ID: UUID;
+    
+    productCode: Code;
+    name: String(200);
+    description: String(2000);
+    unitPrice: Money;
+    isActive: Boolean default true;
+    
+    unique index idx_product_code on (productCode);
+}
+
+// View definition
+define view ActiveCustomers as
+    select
+        c.ID,
+        c.customerCode,
+        c.name,
+        c.email
+    from Customer as c
+    where c.status = #Active
+
+// Service
+service OrderService {
+    function getOrder(orderId: UUID) returns Order;
+    function getCustomerOrders(customerId: UUID) returns Order;
+    action createOrder(customerId: UUID) returns Order;
+    action confirmOrder(orderId: UUID);
+}

@@ -1,0 +1,10 @@
+{
+  "name": "BMMDL.Plugin.HasStream",
+  "version": "1.0.0",
+  "description": "Media entity support — binary content via $value endpoint",
+  "author": "BMMDL Team",
+  "entryAssembly": "BMMDL.Plugin.HasStream.dll",
+  "dependencies": [],
+  "bmmdlModules": [],
+  "autoLoad": true
+}
