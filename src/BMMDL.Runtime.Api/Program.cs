@@ -180,15 +180,42 @@ builder.Services.AddAuthorization(options =>
 // BMMDL RUNTIME SERVICES
 // =============================================================================
 
+// IMetaModelRepository — pluggable registry storage backend.
+// Checks for IRegistryStorageProvider plugins first; falls back to EfCoreMetaModelRepository.
+// Registered as Singleton because MetaModelCacheManager (which consumes it) is Singleton.
+// The repository loads data on-demand, so a single long-lived instance is safe.
+builder.Services.AddSingleton<BMMDL.Registry.Repositories.IMetaModelRepository>(sp =>
+{
+    var featureRegistry = sp.GetService<PlatformFeatureRegistry>();
+    var customProvider = featureRegistry?.AllFeatures
+        .OfType<IRegistryStorageProvider>()
+        .OrderByDescending(p => (p as IPlatformFeature)?.Stage ?? 0)
+        .FirstOrDefault();
+
+    if (customProvider != null)
+    {
+        sp.GetRequiredService<ILogger<MetaModelCacheManager>>()
+            .LogInformation("Using custom registry storage provider: {Provider}", customProvider.GetType().Name);
+        return customProvider.CreateRepository(sp);
+    }
+
+    // Default: EfCoreMetaModelRepository with a dedicated DbContext (Singleton-safe)
+    var connStr = sp.GetRequiredService<IConfiguration>().GetConnectionString("BmmdlRegistry")
+        ?? throw new InvalidOperationException("Connection string 'BmmdlRegistry' not found");
+    var optionsBuilder = new DbContextOptionsBuilder<BMMDL.Registry.Data.RegistryDbContext>();
+    optionsBuilder.UseNpgsql(connStr);
+    var dbContext = new BMMDL.Registry.Data.RegistryDbContext(optionsBuilder.Options);
+    return new BMMDL.Registry.Repositories.EfCoreMetaModelRepository(dbContext, Guid.Empty);
+});
+
 // MetaModelCacheManager - Singleton (manages cache with reload capability)
-// Injects PlatformFeatureRegistry for fallback entity loading when registry DB is empty
+// Injects IMetaModelRepository for pluggable storage and PlatformFeatureRegistry for fallback entity loading
 builder.Services.AddSingleton<MetaModelCacheManager>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<MetaModelCacheManager>>();
     var registry = sp.GetService<PlatformFeatureRegistry>(); // nullable — may not be registered yet
-    var connStr = sp.GetRequiredService<IConfiguration>().GetConnectionString("BmmdlRegistry")
-        ?? throw new InvalidOperationException("Connection string 'BmmdlRegistry' not found");
-    return new MetaModelCacheManager(connStr, logger, registry);
+    var repository = sp.GetRequiredService<BMMDL.Registry.Repositories.IMetaModelRepository>();
+    return new MetaModelCacheManager(repository, logger, registry);
 });
 
 // CsdlGenerator - Singleton (stateless CSDL XML generation)

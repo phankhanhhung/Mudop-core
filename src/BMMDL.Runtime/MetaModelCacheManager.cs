@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 namespace BMMDL.Runtime;
 
 using BMMDL.MetaModel;
+using BMMDL.Registry.Repositories;
 using BMMDL.Runtime.Plugins;
 
 /// <summary>
@@ -19,6 +20,7 @@ public class MetaModelCacheManager : IDisposable
     private readonly string _connectionString;
     private readonly ILogger<MetaModelCacheManager> _logger;
     private readonly PlatformFeatureRegistry? _featureRegistry;
+    private readonly IMetaModelRepository? _repository;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
     private volatile MetaModelCache? _cache;
     private Task<MetaModelCache>? _loadingTask;
@@ -30,10 +32,28 @@ public class MetaModelCacheManager : IDisposable
     /// </summary>
     public long Version => Interlocked.Read(ref _version);
 
+    /// <summary>
+    /// Creates a MetaModelCacheManager that uses a connection string to construct EfCoreMetaModelRepository on demand.
+    /// This is the legacy constructor for backward compatibility.
+    /// </summary>
     public MetaModelCacheManager(string connectionString, ILogger<MetaModelCacheManager> logger,
         PlatformFeatureRegistry? featureRegistry = null)
     {
         _connectionString = connectionString;
+        _logger = logger;
+        _featureRegistry = featureRegistry;
+        _repository = null;
+    }
+
+    /// <summary>
+    /// Creates a MetaModelCacheManager that uses a pluggable <see cref="IMetaModelRepository"/> for storage.
+    /// This constructor enables custom storage backends via the plugin system.
+    /// </summary>
+    public MetaModelCacheManager(IMetaModelRepository repository, ILogger<MetaModelCacheManager> logger,
+        PlatformFeatureRegistry? featureRegistry = null)
+    {
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _connectionString = string.Empty; // Not used when repository is provided
         _logger = logger;
         _featureRegistry = featureRegistry;
     }
@@ -244,11 +264,20 @@ public class MetaModelCacheManager : IDisposable
     }
 
     /// <summary>
-    /// Loads the BmModel from the registry database.
+    /// Loads the BmModel from the registry storage backend.
+    /// If an <see cref="IMetaModelRepository"/> was provided at construction, delegates to it.
+    /// Otherwise, falls back to creating a temporary EfCoreMetaModelRepository from the connection string.
     /// Protected virtual to allow test subclasses to provide a model without requiring a real database.
     /// </summary>
     protected virtual async Task<BmModel> LoadModelFromRegistryAsync(CancellationToken ct = default)
     {
+        // Pluggable path: use injected repository
+        if (_repository is not null)
+        {
+            return await _repository.LoadModelAsync(ct);
+        }
+
+        // Legacy path: create EfCoreMetaModelRepository from connection string
         var optionsBuilder = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<BMMDL.Registry.Data.RegistryDbContext>();
         optionsBuilder.UseNpgsql(_connectionString);
 

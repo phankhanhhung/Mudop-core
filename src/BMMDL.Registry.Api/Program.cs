@@ -46,7 +46,14 @@ builder.Services.AddDbContext<RegistryDbContext>((sp, options) =>
 builder.Services.AddScoped<IModuleRepository, ModuleRepository>();
 builder.Services.AddScoped<IMigrationRepository, MigrationRepository>();
 builder.Services.AddScoped<IModuleInstallationRepository, ModuleInstallationRepository>();
-// Note: EfCoreMetaModelRepository requires runtime tenantId - create inline where needed
+// IMetaModelRepository — pluggable registry storage backend.
+// Default: EfCoreMetaModelRepository with System Tenant (Guid.Empty).
+// Plugins can replace this via IRegistryStorageProvider.
+builder.Services.AddScoped<IMetaModelRepository>(sp =>
+{
+    var dbContext = sp.GetRequiredService<RegistryDbContext>();
+    return new EfCoreMetaModelRepository(dbContext, Guid.Empty);
+});
 
 // Services
 builder.Services.AddScoped<DependencyResolver>();

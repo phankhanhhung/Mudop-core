@@ -26,7 +26,7 @@ public class ModuleCompilationService : IModuleCompilationService
     private readonly ModuleDiscoveryService _discoveryService;
     private readonly ISchemaManagementService _schemaService;
     private readonly VersioningService? _versioningService;
-    private readonly EfCoreMetaModelRepository? _metaModelRepo;
+    private readonly IMetaModelRepository? _metaModelRepo;
     private readonly IModuleInstallationService? _installService;
 
     public ModuleCompilationService(
@@ -37,7 +37,7 @@ public class ModuleCompilationService : IModuleCompilationService
         ModuleDiscoveryService discoveryService,
         ISchemaManagementService schemaService,
         VersioningService? versioningService = null,
-        EfCoreMetaModelRepository? metaModelRepo = null,
+        IMetaModelRepository? metaModelRepo = null,
         IModuleInstallationService? installService = null)
     {
         _registryDb = registryDb;

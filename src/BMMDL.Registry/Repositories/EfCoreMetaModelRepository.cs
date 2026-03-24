@@ -18,7 +18,7 @@ namespace BMMDL.Registry.Repositories;
 /// Uses RegistryDbContext as the single source of truth.
 /// Thin facade that delegates to focused persister classes.
 /// </summary>
-public class EfCoreMetaModelRepository
+public class EfCoreMetaModelRepository : IMetaModelRepository
 {
     private readonly RegistryDbContext _db;
     private readonly Guid _tenantId;
